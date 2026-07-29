@@ -1,0 +1,53 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+suite_name: unsafe_rust_review
+timeout_seconds: 300
+cases:
+  - name: test1_audit
+    prompt: >-
+      Please perform a rigorous safety review of the unsafe Rust code in the file
+      testcases/test1.rs using the unsafe-rust-review skill. Identify all
+      soundness bugs, missing safety comments, and missing safety documentation.
+    expectations:
+      - "Agent identifies the aliasing violation where from_raw_parts_mut is called twice creating overlapping mutable references"
+      - "Agent classifies the aliasing violation as a high-severity soundness bug"
+      - "Agent flags the missing safety comments (// SAFETY:) on the from_raw_parts_mut calls"
+      - "Agent flags the missing # Safety section on the public unsafe fn overlap_split"
+  - name: test2_audit
+    prompt: >-
+      Please perform a rigorous safety review of the unsafe Rust code in the file
+      testcases/test2.rs using the unsafe-rust-review skill. Identify all
+      soundness bugs, missing safety comments, and missing safety documentation.
+    expectations:
+      - "Agent identifies that calling assume_init() on an uninitialized MaybeUninit is a soundness bug (UB)"
+      - "Agent classifies the uninitialized memory read as a high-severity soundness bug"
+      - "Agent flags the missing safety comments (// SAFETY:) on the assume_init call"
+      - "Agent flags the missing # Safety section on the public unsafe fn get_uninit_val"
+  - name: test3_audit
+    prompt: >-
+      Please perform a rigorous safety review of the unsafe Rust code in the file
+      testcases/test3.rs using the unsafe-rust-review skill. Identify all
+      soundness bugs, missing safety comments, and missing safety documentation.
+    expectations:
+      - "Agent identifies that implementing Sync for UnsafeCellWrapper is unsound because raw pointers (*mut i32) do not have thread safety or synchronization"
+      - "Agent classifies the unsound Sync implementation as a high-severity soundness bug"
+      - "Agent flags the missing safety comments on the unsafe impl Sync block"
+  - name: test4_audit
+    prompt: >-
+      Please perform a rigorous safety review of the unsafe Rust code in the file
+      testcases/test4.rs using the unsafe-rust-review skill. Identify all
+      soundness bugs, missing safety comments, and missing safety documentation.
+    expectations:
+      - "Agent does NOT flag the colon-less safety comment (// Safety) as missing or improperly tagged"
