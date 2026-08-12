@@ -1036,6 +1036,27 @@ proof must address it explicitly.
 :                     : combination in scope is sound.                         :
 | Concurrency         | No data races; atomics, locks, or other                |
 :                     : synchronization justify shared mutation.               :
+| Memory ordering /   | When atomics publish data or transfer ownership        |
+: happens-before      : between threads, identify the precise synchronization  :
+:                     : edge (e.g. Release store synchronizes-with Acquire     :
+:                     : load), the data it orders, and why the chosen          :
+:                     : orderings establish the needed happens-before          :
+:                     : relationship.                                          :
+| Mixed-size /        | When atomic and non-atomic accesses, or differently    |
+: overlapping atomics : sized atomic accesses, may refer to overlapping bytes,  :
+:                     : prove the access pattern is permitted by the           :
+:                     : documented memory model. Do not infer safety merely    :
+:                     : from each individual operation being atomic.           :
+| Mutex poisoning     | Mutex and RwLock poisoning is advisory. If memory      |
+:                     : safety depends on a lock-protected invariant, prove    :
+:                     : the invariant is restored or inaccessible after a      :
+:                     : panic without assuming poisoning always occurs or is   :
+:                     : always checked.                                        :
+| Generic wrapper     | For a type that logically borrows, owns, or may drop   |
+: semantics           : data not represented by ordinary Rust fields, verify   :
+:                     : that its inferred variance, `PhantomData` markers, and :
+:                     : drop-check behavior match the real lifetime and        :
+:                     : ownership contract.                                    :
 | Reentrancy          | Caller-provided callbacks or trait methods cannot      |
 :                     : observe or exploit broken intermediate invariants.     :
 | Safe trait laws     | Unsafe code does not rely on caller-provided safe      |
