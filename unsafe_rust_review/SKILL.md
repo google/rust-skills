@@ -597,12 +597,12 @@ Example:
 ///
 /// The caller must ensure that:
 ///
-/// 1. `ptr` was allocated by the global allocator with layout
-///    `Layout::array::<T>(cap).unwrap()`.
-/// 2. `ptr` is aligned for `T` and non-null.
+/// 1. `ptr` is non-null and aligned for `T` (e.g. `NonNull::dangling()` for ZSTs or zero capacity).
+/// 2. If `size_of::<T>() != 0 && cap != 0`, `ptr` was allocated by the global allocator
+///    with layout `Layout::array::<T>(cap).unwrap()`, and `cap` is the allocation capacity.
 /// 3. The first `len` elements are initialized valid `T` values.
 /// 4. `len <= cap`.
-/// 5. `cap * size_of::<T>() <= isize::MAX`.
+/// 5. `cap * size_of::<T>() <= isize::MAX as usize`.
 /// 6. No other owner will read, write, drop, or deallocate the allocation after
 ///    this function takes ownership.
 ```
@@ -650,10 +650,10 @@ Examples of facts that must be grounded in Reference or std docs:
 : reference                            :                               :
 | `transmute` requires both source and | `mem::transmute` docs         |
 : result to be valid at their types    :                               :
-| `Vec::from_raw_parts` requires the   | `Vec` docs                    |
-: original allocation layout,          :                               :
-: capacity, allocator, alignment, and  :                               :
-: initialized prefix to match          :                               :
+| `Vec::from_raw_parts` requires matching | `Vec` docs                    |
+: allocator layout/capacity when `cap > 0`:                               :
+: and `size_of::<T>() > 0`; otherwise     :                               :
+: non-null aligned pointer & `len <= cap` :                               :
 | raw pointer arithmetic has           | primitive pointer docs        |
 : same-allocation and `isize`          :                               :
 : constraints                          :                               :
@@ -1240,16 +1240,21 @@ let v = unsafe { Vec::from_raw_parts(ptr, len, cap) };
 
 Require proof of:
 
--   original allocator identity;
--   exact allocation layout;
--   alignment equality, not merely compatibility;
--   capacity from the original allocation;
--   `len <= cap`;
--   first `len` elements initialized;
--   allocation size constraints;
--   ownership transfer;
--   no other owner will use or deallocate the allocation;
--   no double-drop or use-after-free path.
+-   **When `size_of::<T>() != 0 && cap != 0`**:
+    -   original allocator identity;
+    -   exact allocation layout (`Layout::array::<T>(cap)`);
+    -   alignment equality, not merely compatibility;
+    -   capacity from the original allocation;
+    -   allocation size constraints (`cap * size_of::<T>() <= isize::MAX as usize`);
+-   **When `size_of::<T>() == 0 || cap == 0`**:
+    -   `ptr` is non-null and suitably aligned for `T` (e.g. `NonNull::dangling()`);
+    -   no heap allocation required;
+-   **In all cases**:
+    -   `len <= cap`;
+    -   first `len` elements initialized;
+    -   ownership transfer;
+    -   no other owner will use or deallocate the allocation;
+    -   no double-drop or use-after-free path.
 
 ### 8. Safe trait law relied on for memory safety
 
