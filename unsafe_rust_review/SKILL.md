@@ -1084,6 +1084,12 @@ proof must address it explicitly.
 :                     : required duration.                                     :
 | Layout/repr         | Any layout assumption is guaranteed by `repr`,         |
 :                     : Reference, or std docs, not compiler accident.         :
+| Nested layout /     | A direct representation guarantee for `A` and `B` does  |
+: niches              : not automatically imply that `Outer<A>` and `Outer<B>` :
+:                     : have the same layout, ABI, niches, or transmutability. :
+:                     : Prove the enclosing representation from its own `repr` :
+:                     : and documented guarantees. In particular, account for  :
+:                     : niche suppression by `UnsafeCell`.                     :
 | Padding / object    | When code reads, compares, hashes, serializes,          |
 : representation      : transmutes, or attempts to preserve a value's raw      :
 :                     : bytes, prove that every observed byte is permitted to  :
@@ -1280,6 +1286,13 @@ Require proof that:
 
 `transmute` is a last-resort operation. Same size is necessary but not
 sufficient.
+
+#### Non-Compositionality of Niches and Outer Layouts
+
+Never assume that layout equivalence of inner types composes to outer types:
+- Although `UnsafeCell<T>` and `MaybeUninit<T>` have identical size and alignment to `T`, wrapping `T` inside them inhibits or changes niche optimizations for enclosing types.
+- For example, `Option<core::ptr::NonNull<u8>>` is 8 bytes due to null-pointer niche optimization, whereas `Option<core::cell::UnsafeCell<core::ptr::NonNull<u8>>>` or `Option<core::mem::MaybeUninit<core::ptr::NonNull<u8>>>` may be 16 bytes.
+- Transmuting between `Outer<T>` and `Outer<UnsafeCell<T>>` or `Outer<MaybeUninit<T>>` is unsound unless the layout of the entire outer type is explicitly proved.
 
 #### Padding and Raw Byte Access
 
