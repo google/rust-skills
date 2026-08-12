@@ -1508,7 +1508,12 @@ Safe caller-provided code cannot be assumed to preserve your undocumented
 invariants. It may observe or mutate through any safe capability you give it.
 Therefore:
 
--   Do not expose partially initialized buffers to caller code.
+-   Do not expose uninitialized or partially initialized storage to caller code as
+    initialized `T`, `&T`, `&mut T`, `[T]`, or any other type whose validity
+    requires initialization. Typed exposure as `MaybeUninit<T>` (e.g.
+    `Vec::spare_capacity_mut`) may be sound when the API keeps initialized
+    length/ownership metadata accurate and does not let safe caller actions cause
+    uninitialized storage to be read, dropped, or otherwise treated as `T`.
 -   Do not call callbacks while `Vec::len` is inconsistent with initialized
     elements.
 -   Do not hold invalid references across calls to unknown code.
