@@ -1038,6 +1038,12 @@ proof must address it explicitly.
 :                     : projection/destruction rules allow it.                 :
 | Layout/repr         | Any layout assumption is guaranteed by `repr`,         |
 :                     : Reference, or std docs, not compiler accident.         :
+| Padding / object    | When code reads, compares, hashes, serializes,          |
+: representation      : transmutes, or attempts to preserve a value's raw      :
+:                     : bytes, prove that every observed byte is permitted to  :
+:                     : be read and that no claim depends on padding being     :
+:                     : initialized or preserved unless an authoritative       :
+:                     : contract guarantees it.                                :
 | Niche/validity      | Non-null/aligned/reference validity assumptions are    |
 : optimizations       : respected even when data length is zero.               :
 | Integer arithmetic  | Size computations are checked for overflow and         |
@@ -1228,6 +1234,13 @@ Require proof that:
 
 `transmute` is a last-resort operation. Same size is necessary but not
 sufficient.
+
+#### Padding and Raw Byte Access
+
+When code reads, compares, hashes, serializes, or transmutes raw struct bytes:
+- Padding bytes are uninitialized by default and not preserved across typed moves/copies.
+- Reading or hashing `size_of::<T>()` raw bytes behind `&T` is invalid whenever `T` contains uninitialized padding.
+- Fieldwise operations should be preferred over whole-object raw byte operations.
 
 ### 7. "Vec owns this pointer"
 
