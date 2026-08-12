@@ -1276,6 +1276,12 @@ Require proof of:
     -   no other owner will use or deallocate the allocation;
     -   no double-drop or use-after-free path.
 
+#### Sequencing Ownership Transfer
+
+Prefer a consuming standard-library or project API such as `into_raw` or `into_raw_parts` that ends the old ownership state while yielding the raw components.
+
+When manual extraction is unavoidable, disable the old owner's automatic `Drop` (e.g. using `std::mem::ManuallyDrop`) before constructing any replacement owner. After the replacement owner exists, do not read, move, pass, forget, or otherwise use the invalidated old value. Audit every possible panic and early-return point: failure may leak, but must not create two destructors for the same resource or permit access through an invalid owner.
+
 ### 8. Safe trait law relied on for memory safety
 
 Reject:
