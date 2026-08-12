@@ -542,8 +542,11 @@ Examples:
 ```
 
 ```rust
-/// No other pointer or reference may read or write the memory for the duration
-/// of the returned mutable reference, except as permitted by `UnsafeCell`.
+/// For the duration in which the returned `&mut T` is relied upon, the pointee
+/// must not be accessed through any pointer or reference whose access is not
+/// permitted by the applicable mutable-reference rules. `UnsafeCell` does not
+/// relax the uniqueness guarantee of `&mut`; it only permits mutation of its
+/// contents through shared references.
 ```
 
 ```rust
