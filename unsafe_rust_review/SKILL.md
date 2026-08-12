@@ -213,6 +213,16 @@ is true:
     re-exported marker types;
 5.  the type system enforces the property independently of caller honesty.
 
+An unsafe API may explicitly place a caller obligation on the behavior of an
+otherwise safe implementation. In that case, do not assume the safe trait law
+for arbitrary caller-provided implementations; instead, quote the unsafe API's
+precondition and prove that every concrete implementation reachable in this
+call satisfies it through crate control, a trusted dependency contract, sealing,
+type-system enforcement, or direct inspection. `Pin::new_unchecked` is a key
+example: its caller must establish the required behavior of the concrete
+pointer type's `Deref`, `DerefMut`, and `Drop` implementations. (See also
+[Safety-usable invariants on safe helpers](#safety-usable-invariants-on-safe-helpers).)
+
 A sealed-trait proof must be mechanical, not aspirational. Documentation saying
 "do not implement this trait" is not sealing. A public supertrait, public marker
 type, public token constructor, public blanket impl, re-exported sealing
