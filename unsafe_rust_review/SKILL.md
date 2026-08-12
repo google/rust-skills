@@ -554,7 +554,9 @@ Examples:
 ```
 
 ```rust
-/// The pointee must remain pinned until `Self::drop` completes.
+/// For `!Unpin` data, the pointee must remain pinned in memory (never moved,
+/// deallocated, or repurposed without dropping) until its destructor completes.
+/// Dropping a temporary `Pin<&mut T>` wrapper does not release this obligation.
 ```
 
 ```rust
@@ -1005,8 +1007,10 @@ proof must address it explicitly.
 | Pointer arithmetic  | Same-allocation range, `isize` fit, no wraparound, no  |
 :                     : out-of-bounds projection when the API requires         :
 :                     : in-bounds.                                             :
-| Lifetime            | Obligations hold for exactly the                       |
-:                     : returned/reference/future/iterator/pin lifetime.       :
+| Temporal scope      | Each obligation states what event ends it. Do not infer |
+:                     : that dropping a temporary reference, guard, iterator,  :
+:                     : future, or `Pin<Ptr>` ends obligations attached to the :
+:                     : underlying allocation, pointee, or async operation.    :
 | Ownership           | Exactly one owner is responsible for                   |
 :                     : drop/deallocation; ownership transfers are explicit.   :
 | Drop / destructor   | No double drop, use-after-move, or drop of              |
@@ -1041,8 +1045,12 @@ proof must address it explicitly.
 :                     : not extend to caller-supplied code.                    :
 | Traits              | Unsafe trait implementer obligations are satisfied and |
 :                     : not silently strengthened.                             :
-| Pinning             | Pinned values are not moved unless the relevant        |
-:                     : projection/destruction rules allow it.                 :
+| Pinning             | Identify the pointee and the event that ends its        |
+:                     : pinning guarantee—commonly destruction of the          :
+:                     : pointee. Dropping a temporary `Pin<&mut T>` handle     :
+:                     : alone does not make the pointee movable. Projection    :
+:                     : and pinned-drop rules remain satisfied for the full    :
+:                     : required duration.                                     :
 | Layout/repr         | Any layout assumption is guaranteed by `repr`,         |
 :                     : Reference, or std docs, not compiler accident.         :
 | Padding / object    | When code reads, compares, hashes, serializes,          |
