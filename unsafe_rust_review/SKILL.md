@@ -1469,8 +1469,8 @@ of the following:
     supertrait, blanket impl, associated type escape hatch, marker type,
     macro-generated impl hook, feature-gated impl hook, re-exported private
     token, or type alias;
--   downstream crates cannot construct, name, clone, transmute, deserialize, or
-    otherwise forge any sealing token that the proof relies on;
+-   downstream safe code cannot construct, name, clone, deserialize, or otherwise
+    obtain any sealing token through any safe public surface;
 -   public fields, public constructors, re-exports, macros, proc macros, or
     generated code cannot create values that claim the sealed invariant without
     going through reviewed constructors;
@@ -1489,6 +1489,12 @@ of the following:
     implementation unless those parameters are constrained by an unsafe
     contract, dynamic checks, type-system facts, or trusted dependency
     implementations.
+
+Do not require an abstraction to remain sound after downstream unsafe code
+forges an invalid token with `transmute` or otherwise violates an unsafe
+contract. A project may separately review robustness against hostile unsafe
+clients or corrupted FFI input, but that is not part of the ordinary safe-client
+sealing proof.
 
 If sealing is not airtight, treat the implementation as caller-provided safe
 code. Then the law is not a valid memory-safety premise unless it is dynamically
