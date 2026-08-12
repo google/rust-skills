@@ -397,16 +397,20 @@ Example:
 // Operation: `core::slice::from_raw_parts(ptr, len)`.
 // Required contract: `ptr` must be non-null, properly aligned, valid for reads
 // of `len * size_of::<T>()` bytes, refer to one allocation, and point to `len`
-// initialized `T` values. The memory must not be mutated for `'a` except
-// through `UnsafeCell`.
+// initialized `T` values. The memory must not be mutated by any alias for `'a`
+// except through nested `UnsafeCell`.
 // Evidence:
 // - By this function's `# Safety` precondition, the caller provides a live
 //   allocation containing `len` initialized `T` values starting at `ptr`.
 // - The same precondition requires `ptr` to be non-null and aligned for `T`.
 // - `len` was checked above so that `len * size_of::<T>() <= isize::MAX`, and
 //   no intervening code mutates `len` or `ptr`.
-// - This function does not expose mutation of that allocation for `'a` except
-//   through `UnsafeCell`.
+// - By `# Safety` precondition, the caller guarantees that for the full returned
+//   lifetime `'a`, no access path—including pre-existing raw pointers, aliases,
+//   callbacks, reentrant code, foreign code, or concurrent agents—will mutate the
+//   range except within nested `UnsafeCell` values.
+// - Between accepting that precondition and constructing the slice, this function
+//   invokes no unknown code and performs no state transition that can invalidate it.
 // Therefore all obligations of `from_raw_parts` are discharged.
 let s = unsafe { core::slice::from_raw_parts(ptr, len) };
 ```
