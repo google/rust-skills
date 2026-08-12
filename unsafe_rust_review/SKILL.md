@@ -1009,10 +1009,17 @@ proof must address it explicitly.
 :                     : returned/reference/future/iterator/pin lifetime.       :
 | Ownership           | Exactly one owner is responsible for                   |
 :                     : drop/deallocation; ownership transfers are explicit.   :
-| Drop                | No double drop, use-after-move, forgotten initialized  |
-:                     : value, or dropping uninitialized memory.               :
-| Panic/unwind        | Invariants remain valid if a panic occurs between      |
-:                     : partial initialization and finalization.               :
+| Drop / destructor   | No double drop, use-after-move, or drop of              |
+: elision             : uninitialized storage. Safety must not depend on a     :
+:                     : destructor running: safe code may use `mem::forget`,   :
+:                     : leak a guard or proxy, or form reference cycles. A     :
+:                     : leak may be acceptable; later safe access to invalid   :
+:                     : state is not.                                          :
+| Panic / unwind      | Treat every call to caller-controlled safe code as a   |
+:                     : potential panic and reentrancy point. At each such     :
+:                     : point, invariants are either fully restored or         :
+:                     : protected so unwinding can leak but cannot expose UB,  :
+:                     : double-drop, or invalid state.                         :
 | FFI/ABI             | Correct ABI, FFI-safe representations, valid foreign   |
 :                     : contracts, unwind behavior, ownership transfer,        :
 :                     : retention behavior, callbacks, global state, and       :
