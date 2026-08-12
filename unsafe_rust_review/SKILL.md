@@ -213,6 +213,16 @@ is true:
     re-exported marker types;
 5.  the type system enforces the property independently of caller honesty.
 
+An unsafe API may explicitly place a caller obligation on the behavior of an
+otherwise safe implementation. In that case, do not assume the safe trait law
+for arbitrary caller-provided implementations; instead, quote the unsafe API's
+precondition and prove that every concrete implementation reachable in this
+call satisfies it through crate control, a trusted dependency contract, sealing,
+type-system enforcement, or direct inspection. `Pin::new_unchecked` is a key
+example: its caller must establish the required behavior of the concrete
+pointer type's `Deref`, `DerefMut`, and `Drop` implementations. (See also
+[Safety-usable invariants on safe helpers](#safety-usable-invariants-on-safe-helpers).)
+
 A sealed-trait proof must be mechanical, not aspirational. Documentation saying
 "do not implement this trait" is not sealing. A public supertrait, public marker
 type, public token constructor, public blanket impl, re-exported sealing
@@ -382,18 +392,13 @@ exact operation is valid at the exact program point.
 For unsafe attributes, use a safety comment to justify the whole-program,
 linkage, ABI, symbol, section, or target-feature obligation being asserted.
 
-#### Comment Formatting Invariant
+#### Comment Formatting
 
-*   **Case-Insensitivity**: The word `safety` (e.g. `SAFETY`, `Safety`,
-    `safety`) does **not** need to be capitalized.
-*   **Optional Colon**: The colon after the safety keyword is **optional**.
-    Comments like `// Safety`, `// SAFETY`, `/// safety`, or `// safety:` are
-    all fully acceptable.
-*   **Doc Comments**: Safety comments can be regular comments (e.g., `//
-    safety`) or doc comments (e.g., `/// safety`).
-*   **Safety Comments on `unsafe impl`**: A doc comment (e.g., `/// safety`)
-    placed directly on an `unsafe impl` is a completely acceptable and valid
-    safety comment.
+*   **Canonical spelling:** Generate `// SAFETY:` immediately before an unsafe operation or `unsafe impl`. This form is recognized by Clippy's `undocumented_unsafe_blocks` lint.
+*   **Review significance:** Capitalization or punctuation differences (such as `// Safety`, `/// safety`, or `// safety:`) do not change the semantic adequacy of a safety proof. When a project enables a lint that rejects the local spelling, mention the canonical form as a brief tooling note; do not report it as a soundness defect or let it dominate the review.
+*   **Doc Comments**: Safety comments can be regular comments (e.g., `// safety`) or doc comments (e.g., `/// safety`).
+*   **Safety Comments on `unsafe impl`**: A doc comment or regular comment placed directly on an `unsafe impl` is a completely acceptable and valid safety comment.
+*   **Public API Documentation**: Use `/// # Safety` for the caller or implementer contract on public unsafe functions and traits.
 
 Example:
 
@@ -402,16 +407,20 @@ Example:
 // Operation: `core::slice::from_raw_parts(ptr, len)`.
 // Required contract: `ptr` must be non-null, properly aligned, valid for reads
 // of `len * size_of::<T>()` bytes, refer to one allocation, and point to `len`
-// initialized `T` values. The memory must not be mutated for `'a` except
-// through `UnsafeCell`.
+// initialized `T` values. The memory must not be mutated by any alias for `'a`
+// except through nested `UnsafeCell`.
 // Evidence:
 // - By this function's `# Safety` precondition, the caller provides a live
 //   allocation containing `len` initialized `T` values starting at `ptr`.
 // - The same precondition requires `ptr` to be non-null and aligned for `T`.
 // - `len` was checked above so that `len * size_of::<T>() <= isize::MAX`, and
 //   no intervening code mutates `len` or `ptr`.
-// - This function does not expose mutation of that allocation for `'a` except
-//   through `UnsafeCell`.
+// - By `# Safety` precondition, the caller guarantees that for the full returned
+//   lifetime `'a`, no access path—including pre-existing raw pointers, aliases,
+//   callbacks, reentrant code, foreign code, or concurrent agents—will mutate the
+//   range except within nested `UnsafeCell` values.
+// - Between accepting that precondition and constructing the slice, this function
+//   invokes no unknown code and performs no state transition that can invalidate it.
 // Therefore all obligations of `from_raw_parts` are discharged.
 let s = unsafe { core::slice::from_raw_parts(ptr, len) };
 ```
@@ -547,12 +556,17 @@ Examples:
 ```
 
 ```rust
-/// No other pointer or reference may read or write the memory for the duration
-/// of the returned mutable reference, except as permitted by `UnsafeCell`.
+/// For the duration in which the returned `&mut T` is relied upon, the pointee
+/// must not be accessed through any pointer or reference whose access is not
+/// permitted by the applicable mutable-reference rules. `UnsafeCell` does not
+/// relax the uniqueness guarantee of `&mut`; it only permits mutation of its
+/// contents through shared references.
 ```
 
 ```rust
-/// The pointee must remain pinned until `Self::drop` completes.
+/// For `!Unpin` data, the pointee must remain pinned in memory (never moved,
+/// deallocated, or repurposed without dropping) until its destructor completes.
+/// Dropping a temporary `Pin<&mut T>` wrapper does not release this obligation.
 ```
 
 ```rust
@@ -595,12 +609,12 @@ Example:
 ///
 /// The caller must ensure that:
 ///
-/// 1. `ptr` was allocated by the global allocator with layout
-///    `Layout::array::<T>(cap).unwrap()`.
-/// 2. `ptr` is aligned for `T` and non-null.
+/// 1. `ptr` is non-null and aligned for `T` (e.g. `NonNull::dangling()` for ZSTs or zero capacity).
+/// 2. If `size_of::<T>() != 0 && cap != 0`, `ptr` was allocated by the global allocator
+///    with layout `Layout::array::<T>(cap).unwrap()`, and `cap` is the allocation capacity.
 /// 3. The first `len` elements are initialized valid `T` values.
 /// 4. `len <= cap`.
-/// 5. `cap * size_of::<T>() <= isize::MAX`.
+/// 5. `cap * size_of::<T>() <= isize::MAX as usize`.
 /// 6. No other owner will read, write, drop, or deallocate the allocation after
 ///    this function takes ownership.
 ```
@@ -648,10 +662,10 @@ Examples of facts that must be grounded in Reference or std docs:
 : reference                            :                               :
 | `transmute` requires both source and | `mem::transmute` docs         |
 : result to be valid at their types    :                               :
-| `Vec::from_raw_parts` requires the   | `Vec` docs                    |
-: original allocation layout,          :                               :
-: capacity, allocator, alignment, and  :                               :
-: initialized prefix to match          :                               :
+| `Vec::from_raw_parts` requires matching | `Vec` docs                    |
+: allocator layout/capacity when `cap > 0`:                               :
+: and `size_of::<T>() > 0`; otherwise     :                               :
+: non-null aligned pointer & `len <= cap` :                               :
 | raw pointer arithmetic has           | primitive pointer docs        |
 : same-allocation and `isize`          :                               :
 : constraints                          :                               :
@@ -1003,14 +1017,23 @@ proof must address it explicitly.
 | Pointer arithmetic  | Same-allocation range, `isize` fit, no wraparound, no  |
 :                     : out-of-bounds projection when the API requires         :
 :                     : in-bounds.                                             :
-| Lifetime            | Obligations hold for exactly the                       |
-:                     : returned/reference/future/iterator/pin lifetime.       :
+| Temporal scope      | Each obligation states what event ends it. Do not infer |
+:                     : that dropping a temporary reference, guard, iterator,  :
+:                     : future, or `Pin<Ptr>` ends obligations attached to the :
+:                     : underlying allocation, pointee, or async operation.    :
 | Ownership           | Exactly one owner is responsible for                   |
 :                     : drop/deallocation; ownership transfers are explicit.   :
-| Drop                | No double drop, use-after-move, forgotten initialized  |
-:                     : value, or dropping uninitialized memory.               :
-| Panic/unwind        | Invariants remain valid if a panic occurs between      |
-:                     : partial initialization and finalization.               :
+| Drop / destructor   | No double drop, use-after-move, or drop of              |
+: elision             : uninitialized storage. Safety must not depend on a     :
+:                     : destructor running: safe code may use `mem::forget`,   :
+:                     : leak a guard or proxy, or form reference cycles. A     :
+:                     : leak may be acceptable; later safe access to invalid   :
+:                     : state is not.                                          :
+| Panic / unwind      | Treat every call to caller-controlled safe code as a   |
+:                     : potential panic and reentrancy point. At each such     :
+:                     : point, invariants are either fully restored or         :
+:                     : protected so unwinding can leak but cannot expose UB,  :
+:                     : double-drop, or invalid state.                         :
 | FFI/ABI             | Correct ABI, FFI-safe representations, valid foreign   |
 :                     : contracts, unwind behavior, ownership transfer,        :
 :                     : retention behavior, callbacks, global state, and       :
@@ -1023,6 +1046,27 @@ proof must address it explicitly.
 :                     : combination in scope is sound.                         :
 | Concurrency         | No data races; atomics, locks, or other                |
 :                     : synchronization justify shared mutation.               :
+| Memory ordering /   | When atomics publish data or transfer ownership        |
+: happens-before      : between threads, identify the precise synchronization  :
+:                     : edge (e.g. Release store synchronizes-with Acquire     :
+:                     : load), the data it orders, and why the chosen          :
+:                     : orderings establish the needed happens-before          :
+:                     : relationship.                                          :
+| Mixed-size /        | When atomic and non-atomic accesses, or differently    |
+: overlapping atomics : sized atomic accesses, may refer to overlapping bytes,  :
+:                     : prove the access pattern is permitted by the           :
+:                     : documented memory model. Do not infer safety merely    :
+:                     : from each individual operation being atomic.           :
+| Mutex poisoning     | Mutex and RwLock poisoning is advisory. If memory      |
+:                     : safety depends on a lock-protected invariant, prove    :
+:                     : the invariant is restored or inaccessible after a      :
+:                     : panic without assuming poisoning always occurs or is   :
+:                     : always checked.                                        :
+| Generic wrapper     | For a type that logically borrows, owns, or may drop   |
+: semantics           : data not represented by ordinary Rust fields, verify   :
+:                     : that its inferred variance, `PhantomData` markers, and :
+:                     : drop-check behavior match the real lifetime and        :
+:                     : ownership contract.                                    :
 | Reentrancy          | Caller-provided callbacks or trait methods cannot      |
 :                     : observe or exploit broken intermediate invariants.     :
 | Safe trait laws     | Unsafe code does not rely on caller-provided safe      |
@@ -1032,10 +1076,26 @@ proof must address it explicitly.
 :                     : not extend to caller-supplied code.                    :
 | Traits              | Unsafe trait implementer obligations are satisfied and |
 :                     : not silently strengthened.                             :
-| Pinning             | Pinned values are not moved unless the relevant        |
-:                     : projection/destruction rules allow it.                 :
+| Pinning             | Identify the pointee and the event that ends its        |
+:                     : pinning guarantee—commonly destruction of the          :
+:                     : pointee. Dropping a temporary `Pin<&mut T>` handle     :
+:                     : alone does not make the pointee movable. Projection    :
+:                     : and pinned-drop rules remain satisfied for the full    :
+:                     : required duration.                                     :
 | Layout/repr         | Any layout assumption is guaranteed by `repr`,         |
 :                     : Reference, or std docs, not compiler accident.         :
+| Nested layout /     | A direct representation guarantee for `A` and `B` does  |
+: niches              : not automatically imply that `Outer<A>` and `Outer<B>` :
+:                     : have the same layout, ABI, niches, or transmutability. :
+:                     : Prove the enclosing representation from its own `repr` :
+:                     : and documented guarantees. In particular, account for  :
+:                     : niche suppression by `UnsafeCell`.                     :
+| Padding / object    | When code reads, compares, hashes, serializes,          |
+: representation      : transmutes, or attempts to preserve a value's raw      :
+:                     : bytes, prove that every observed byte is permitted to  :
+:                     : be read and that no claim depends on padding being     :
+:                     : initialized or preserved unless an authoritative       :
+:                     : contract guarantees it.                                :
 | Niche/validity      | Non-null/aligned/reference validity assumptions are    |
 : optimizations       : respected even when data length is zero.               :
 | Integer arithmetic  | Size computations are checked for overflow and         |
@@ -1227,6 +1287,20 @@ Require proof that:
 `transmute` is a last-resort operation. Same size is necessary but not
 sufficient.
 
+#### Non-Compositionality of Niches and Outer Layouts
+
+Never assume that layout equivalence of inner types composes to outer types:
+- Although `UnsafeCell<T>` and `MaybeUninit<T>` have identical size and alignment to `T`, wrapping `T` inside them inhibits or changes niche optimizations for enclosing types.
+- For example, `Option<core::ptr::NonNull<u8>>` is 8 bytes due to null-pointer niche optimization, whereas `Option<core::cell::UnsafeCell<core::ptr::NonNull<u8>>>` or `Option<core::mem::MaybeUninit<core::ptr::NonNull<u8>>>` may be 16 bytes.
+- Transmuting between `Outer<T>` and `Outer<UnsafeCell<T>>` or `Outer<MaybeUninit<T>>` is unsound unless the layout of the entire outer type is explicitly proved.
+
+#### Padding and Raw Byte Access
+
+When code reads, compares, hashes, serializes, or transmutes raw struct bytes:
+- Padding bytes are uninitialized by default and not preserved across typed moves/copies.
+- Reading or hashing `size_of::<T>()` raw bytes behind `&T` is invalid whenever `T` contains uninitialized padding.
+- Fieldwise operations should be preferred over whole-object raw byte operations.
+
 ### 7. "Vec owns this pointer"
 
 Reject:
@@ -1238,16 +1312,27 @@ let v = unsafe { Vec::from_raw_parts(ptr, len, cap) };
 
 Require proof of:
 
--   original allocator identity;
--   exact allocation layout;
--   alignment equality, not merely compatibility;
--   capacity from the original allocation;
--   `len <= cap`;
--   first `len` elements initialized;
--   allocation size constraints;
--   ownership transfer;
--   no other owner will use or deallocate the allocation;
--   no double-drop or use-after-free path.
+-   **When `size_of::<T>() != 0 && cap != 0`**:
+    -   original allocator identity;
+    -   exact allocation layout (`Layout::array::<T>(cap)`);
+    -   alignment equality, not merely compatibility;
+    -   capacity from the original allocation;
+    -   allocation size constraints (`cap * size_of::<T>() <= isize::MAX as usize`);
+-   **When `size_of::<T>() == 0 || cap == 0`**:
+    -   `ptr` is non-null and suitably aligned for `T` (e.g. `NonNull::dangling()`);
+    -   no heap allocation required;
+-   **In all cases**:
+    -   `len <= cap`;
+    -   first `len` elements initialized;
+    -   ownership transfer;
+    -   no other owner will use or deallocate the allocation;
+    -   no double-drop or use-after-free path.
+
+#### Sequencing Ownership Transfer
+
+Prefer a consuming standard-library or project API such as `into_raw` or `into_raw_parts` that ends the old ownership state while yielding the raw components.
+
+When manual extraction is unavoidable, disable the old owner's automatic `Drop` (e.g. using `std::mem::ManuallyDrop`) before constructing any replacement owner. After the replacement owner exists, do not read, move, pass, forget, or otherwise use the invalidated old value. Audit every possible panic and early-return point: failure may leak, but must not create two destructors for the same resource or permit access through an invalid owner.
 
 ### 8. Safe trait law relied on for memory safety
 
@@ -1384,8 +1469,8 @@ of the following:
     supertrait, blanket impl, associated type escape hatch, marker type,
     macro-generated impl hook, feature-gated impl hook, re-exported private
     token, or type alias;
--   downstream crates cannot construct, name, clone, transmute, deserialize, or
-    otherwise forge any sealing token that the proof relies on;
+-   downstream safe code cannot construct, name, clone, deserialize, or otherwise
+    obtain any sealing token through any safe public surface;
 -   public fields, public constructors, re-exports, macros, proc macros, or
     generated code cannot create values that claim the sealed invariant without
     going through reviewed constructors;
@@ -1404,6 +1489,12 @@ of the following:
     implementation unless those parameters are constrained by an unsafe
     contract, dynamic checks, type-system facts, or trusted dependency
     implementations.
+
+Do not require an abstraction to remain sound after downstream unsafe code
+forges an invalid token with `transmute` or otherwise violates an unsafe
+contract. A project may separately review robustness against hostile unsafe
+clients or corrupted FFI input, but that is not part of the ordinary safe-client
+sealing proof.
 
 If sealing is not airtight, treat the implementation as caller-provided safe
 code. Then the law is not a valid memory-safety premise unless it is dynamically
@@ -1436,7 +1527,12 @@ Safe caller-provided code cannot be assumed to preserve your undocumented
 invariants. It may observe or mutate through any safe capability you give it.
 Therefore:
 
--   Do not expose partially initialized buffers to caller code.
+-   Do not expose uninitialized or partially initialized storage to caller code as
+    initialized `T`, `&T`, `&mut T`, `[T]`, or any other type whose validity
+    requires initialization. Typed exposure as `MaybeUninit<T>` (e.g.
+    `Vec::spare_capacity_mut`) may be sound when the API keeps initialized
+    length/ownership metadata accurate and does not let safe caller actions cause
+    uninitialized storage to be read, dropped, or otherwise treated as `T`.
 -   Do not call callbacks while `Vec::len` is inconsistent with initialized
     elements.
 -   Do not hold invalid references across calls to unknown code.
