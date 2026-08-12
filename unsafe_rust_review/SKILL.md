@@ -382,18 +382,13 @@ exact operation is valid at the exact program point.
 For unsafe attributes, use a safety comment to justify the whole-program,
 linkage, ABI, symbol, section, or target-feature obligation being asserted.
 
-#### Comment Formatting Invariant
+#### Comment Formatting
 
-*   **Case-Insensitivity**: The word `safety` (e.g. `SAFETY`, `Safety`,
-    `safety`) does **not** need to be capitalized.
-*   **Optional Colon**: The colon after the safety keyword is **optional**.
-    Comments like `// Safety`, `// SAFETY`, `/// safety`, or `// safety:` are
-    all fully acceptable.
-*   **Doc Comments**: Safety comments can be regular comments (e.g., `//
-    safety`) or doc comments (e.g., `/// safety`).
-*   **Safety Comments on `unsafe impl`**: A doc comment (e.g., `/// safety`)
-    placed directly on an `unsafe impl` is a completely acceptable and valid
-    safety comment.
+*   **Canonical spelling:** Generate `// SAFETY:` immediately before an unsafe operation or `unsafe impl`. This form is recognized by Clippy's `undocumented_unsafe_blocks` lint.
+*   **Review significance:** Capitalization or punctuation differences (such as `// Safety`, `/// safety`, or `// safety:`) do not change the semantic adequacy of a safety proof. When a project enables a lint that rejects the local spelling, mention the canonical form as a brief tooling note; do not report it as a soundness defect or let it dominate the review.
+*   **Doc Comments**: Safety comments can be regular comments (e.g., `// safety`) or doc comments (e.g., `/// safety`).
+*   **Safety Comments on `unsafe impl`**: A doc comment or regular comment placed directly on an `unsafe impl` is a completely acceptable and valid safety comment.
+*   **Public API Documentation**: Use `/// # Safety` for the caller or implementer contract on public unsafe functions and traits.
 
 Example:
 
