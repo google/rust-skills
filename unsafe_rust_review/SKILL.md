@@ -7,6 +7,8 @@ description: Write and review unsafe Rust `# Safety` documentation and safety co
 
 ## Mission
 
+Dummy CL to verify that everything is working in piper->github flow
+
 Act as an extremely strict unsafe Rust author and reviewer. Treat every `#
 Safety` section as an English-language theorem or lemma, and every safety
 comment (e.g., `// safety:` or `/// safety:` in any capitalization) as an
