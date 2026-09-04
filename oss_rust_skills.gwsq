@@ -1,0 +1,10 @@
+// Listens to Copybara Safe Reviews on Gerrit
+send_cls_to('copybara-safe-internal/google3/third_party/rust_skills:Code-Review', exclude_wip=True);
+
+// Listens to Piper Critique CLs created after Safe Review approval
+send_cls_to('oss_rust_skills');
+
+define Main {
+  // Auto-assign to specific reviewers (round-robin)
+  reassign_to_list(['manishearth', 'joshlf'], minimize_reviewer_count=True);
+}
