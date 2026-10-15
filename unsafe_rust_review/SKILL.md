@@ -277,7 +277,8 @@ explicit project invariant:
 -   Rust Edition Guide
 -   RFCs
 -   The Rust Book
--   The Rustonomicon
+-   The Rustonomicon (some chapters lag current Reference semantics, e.g.
+    `unwinding.html` vs `ffi.html#ffi-and-unwinding`)
 -   Unsafe Code Guidelines material
 -   blog posts
 -   academic papers
@@ -1121,7 +1122,14 @@ proof must address it explicitly.
 | FFI/ABI             | Correct ABI, FFI-safe representations, valid foreign   |
 :                     : contracts, unwind behavior, ownership transfer,        :
 :                     : retention behavior, callbacks, global state, and       :
-:                     : target-platform assumptions.                           :
+:                     : target-platform assumptions. A Rust panic reaching a   :
+:                     : non-`-unwind` ABI boundary (e.g. `extern "C"`) safely  :
+:                     : aborts after running local Rust destructors rather     :
+:                     : than unwinding across FFI; cross-boundary unwinding is :
+:                     : UB only when a panic exits an `-unwind` ABI (e.g.      :
+:                     : `extern "C-unwind"`) into a foreign frame that cannot  :
+:                     : handle it, or when a foreign exception enters Rust     :
+:                     : across a non-`-unwind` ABI or into `catch_unwind`.     :
 | Global state        | Global or process-wide state is assumed                |
 :                     : concurrent/reentrant unless synchronization or an      :
 :                     : explicit out-of-band guarantee proves otherwise.       :
