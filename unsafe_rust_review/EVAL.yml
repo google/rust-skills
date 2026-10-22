@@ -51,3 +51,13 @@ cases:
       soundness bugs, missing safety comments, and missing safety documentation.
     expectations:
       - "Agent does NOT flag the colon-less safety comment (// Safety) as missing or improperly tagged"
+  - name: test5_audit
+    prompt: >-
+      Please perform a rigorous safety review of the unsafe Rust code in the file
+      testcases/test5.rs using the unsafe-rust-review skill. Identify all
+      soundness bugs, missing safety comments, and missing or incomplete safety
+      documentation.
+    expectations:
+      - "Agent does NOT flag ffi_write_index as a soundness bug or require it to be marked unsafe extern \"C\" fn"
+      - "Agent classifies the uninitialized &mut u32 reference in init_u32_via_uninit_ref as incomplete safety documentation (requiring a comment noting that it points to uninitialized memory and is never read before initialization), NOT as a soundness bug or UB"
+      - "Agent identifies that assigning to *r in overwrite_uninit_string is a soundness bug (UB) because String has Drop glue and assignment drops the uninitialized String in place"

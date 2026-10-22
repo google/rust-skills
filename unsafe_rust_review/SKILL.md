@@ -279,7 +279,9 @@ explicit project invariant:
 -   The Rust Book
 -   The Rustonomicon (some chapters lag current Reference semantics, e.g.
     `unwinding.html` vs `ffi.html#ffi-and-unwinding`)
--   Unsafe Code Guidelines material
+-   Unsafe Code Guidelines material (except where specifically adopted by this
+    skill, such as
+    [UCG#414 on shallow reference validity](#uninitialized-memory-behind-references-ucg414))
 -   blog posts
 -   academic papers
 -   issue discussions
@@ -734,6 +736,29 @@ it `unsafe` and document those conditions under `# Safety`. Do not make it safe
 and rely on "internal module invariants" without an explicit safety contract, as
 future changes to the module might violate those invariants.
 
+**Exception for FFI-exported functions (`extern "C"`):** The rule against safe
+functions imposing unchecked preconditions applies to **safe Rust callers**. Every
+call from C or C++ is already outside Rust's type-system guarantees on the foreign
+side. A `pub extern "C" fn` (or Crubit/UniFFI export) that accepts references or
+`Option<&T>` / `Option<&mut T>` (e.g., so `cbindgen` emits `T*` while Rust gets
+automatic null checking via niche optimization) does **not** need to be marked
+`unsafe extern "C" fn` if safe Rust callers cannot cause UB through its signature:
+
+-   If a `pub extern "C" fn` takes `Option<&T>` or `Option<&mut T>`, safe Rust
+    callers are already forced by the compiler to pass valid, aligned, non-aliasing
+    references. Satisfying alignment, dereferenceability, and non-aliasing on the
+    C/C++ side is the foreign caller's responsibility. Do not flag such a function
+    for lacking `unsafe` or demand raw pointers `*mut T` instead of `Option<&mut T>`.
+-   By contrast, if a `pub extern "C" fn` accepts raw pointers (`*const T` or
+    `*mut T`) and dereferences them internally without validating them, it **must**
+    be marked `unsafe extern "C" fn` (with `# Safety` documentation), because
+    otherwise *safe Rust* code could call it with a dangling or invalid pointer
+    and trigger UB.
+-   For C/C++ out-parameters passed as `&mut T` or `Option<&mut T>` (which C/C++
+    callers commonly pass pointing to uninitialized stack memory), apply the
+    [Uninitialized memory behind references (`UCG#414`)](#uninitialized-memory-behind-references-ucg414)
+    rules below.
+
 ### 8. Do not strengthen contracts you do not own
 
 For unsafe functions inside traits, the implementation cannot arbitrarily
@@ -1084,7 +1109,9 @@ proof must address it explicitly.
 | Alignment           | Alignment for the accessed type, not merely            |
 :                     : byte-addressability.                                   :
 | Initialization      | Memory contains initialized values where the operation |
-:                     : reads or exposes initialized values.                   :
+:                     : reads, drops, or exposes initialized values (for       :
+:                     : uninitialized memory behind references, see            :
+:                     : [UCG#414](#uninitialized-memory-behind-references-ucg414)). :
 | Type validity       | Values satisfy Rust validity invariants, such as valid |
 :                     : discriminants, valid references, valid `bool`, valid   :
 :                     : `char`, valid `NonZero*`, and valid enum tags.         :
@@ -1660,7 +1687,10 @@ creation time:
 -   non-nullness where the reference-like type requires it;
 -   alignment for the referenced type;
 -   all pointed-to bytes are in live allocations for the full referenced extent;
--   initialization and Rust value validity for the referenced type;
+-   initialization and Rust value validity for the referenced type (or, if
+    temporarily pointing to uninitialized memory without reading or dropping it,
+    explicit documentation per
+    [Uninitialized memory behind references (`UCG#414`)](#uninitialized-memory-behind-references-ucg414));
 -   correct metadata for slices and trait objects;
 -   no violation of shared-reference immutability rules;
 -   no violation of mutable-reference exclusivity rules;
@@ -1677,13 +1707,91 @@ Narrowness is only an auditing discipline. A narrow reference must still be
 valid at the point of creation. A one-element `&mut T` is unsound if another
 live reference aliases that element. A zero-length slice reference may still
 need a non-null aligned pointer if the constructor's documented contract
-requires it. A short-lived reference to uninitialized, invalid, misaligned,
-dangling, or aliased memory is still UB.
+requires it. A short-lived reference to misaligned, dangling, or aliased memory
+is still UB.
 
 Do not accept a proof that says only "the reference is as narrow as possible."
 That proves at most that the author reduced the size of the assertion. It does
 not prove that the assertion is true. The proof must still establish each
 validity, aliasing, lifetime, and metadata obligation at creation time.
+
+### Uninitialized memory behind references (`UCG#414`) {#uninitialized-memory-behind-references-ucg414}
+
+Per [Rust Unsafe Code Guidelines Issue #414](https://github.com/rust-lang/unsafe-code-guidelines/issues/414)
+(and the [Rust Reference on undefined behavior](https://doc.rust-lang.org/reference/behavior-considered-undefined.html)),
+the validity invariant of a reference (`&T`, `&mut T`, `&[T]`, `&mut [T]`) is
+shallow: it does **not** depend on the initialized contents of the pointed-to
+memory. Merely constructing a reference or slice reference to uninitialized
+memory is **not** immediate UB, provided the pointer is non-null, properly
+aligned, dereferenceable for the full extent of `T`, and obeys Rust's aliasing
+rules.
+
+However, having references temporarily point to uninitialized memory is still
+risky. When reviewing or authoring code involving uninitialized memory, apply
+the following distinctions strictly:
+
+1.  **Actual Soundness Violations (Undefined Behavior)**:
+    -   **Uninitialized stack/by-value `T` or reads**: Producing an
+        uninitialized value `T` by value (e.g., an uninitialized stack variable,
+        `MaybeUninit::assume_init()`, `ptr::read`, `mem::transmute`, or reading
+        through `*r` before initialization) is immediate UB for any type `T`
+        whose validity invariant requires initialized bytes (such as integers,
+        floats, `bool`, `char`, references, `Box`, enums, or structs containing
+        them).
+    -   **Overwriting uninitialized `&mut T` when `T` has drop glue**: Assigning
+        `*r = val` through `r: &mut T` evaluates the place `*r` and drops the
+        existing value in place before writing `val`. If `*r` is uninitialized
+        and `T` has drop glue (`core::mem::needs_drop::<T>()`), `*r = val` drops
+        uninitialized memory, which is immediate UB. Overwriting `*r = val` on
+        uninitialized memory is sound **only** when `T` is `Copy` or trivially
+        has no drop glue; otherwise, `ptr::write` or `MaybeUninit` is required.
+    -   **Exposing uninitialized references to code that assumes initialization**:
+        Returning or passing `&T`, `&mut T`, `&[T]`, or `&mut [T]` pointing to
+        uninitialized memory across a safe public API boundary, to untrusted
+        callbacks, or to internal code that is not documented as accepting
+        uninitialized references is unsound, because ordinary Rust code is
+        entitled to read from `&T`/`&[T]`/`&mut T` or assign to `&mut T`
+        (running drop glue). Passing or returning an uninitialized reference to
+        an `unsafe` function or internal helper is only sound when that boundary
+        explicitly documents that the reference may be uninitialized so the Rust
+        code handling it knows not to read or drop it (e.g., using `ptr::write`
+        or only assigning when `T` has no drop glue).
+2.  **Sound Reference Creation to Uninitialized Memory (Documentation Obligation)**:
+    -   If `&T`, `&mut T`, `&[T]`, or `&mut [T]` is created pointing to
+        uninitialized memory and is **not** used unsafely (i.e., it is never read
+        before initialization, never assigned via `*r = val` when `T` has drop
+        glue, and never passed to code that assumes initialization), the code is
+        **sound**.
+    -   **Review classification**: Treat undocumented creation or passing of a
+        reference or slice to uninitialized memory as **Incomplete Safety
+        Documentation** (the same severity and category as a missing or
+        incomplete safety comment, **not** a soundness bug).
+    -   **Required documentation**: Require that the code document *somehow* (in
+        a `// SAFETY:` comment or function/helper comment) that the reference
+        may point to uninitialized memory and how it is handled safely (e.g.,
+        that it is only written to via `ptr::write` or `*r = val` on a
+        `Copy`/no-drop-glue type, and never read before initialization). The
+        comment does **not** need to explicitly cite
+        [UCG#414](https://github.com/rust-lang/unsafe-code-guidelines/issues/414)
+        (though reviewers may reference UCG#414 when explaining why this pattern
+        is sound). Recommend `MaybeUninit<T>` or raw pointers (`*mut T` /
+        `ptr::write`) as preferred alternatives where practical, but **accept
+        the code as sound** once the uninitialized state is documented.
+3.  **FFI Out-Parameters (`&mut T` / `Option<&mut T>`)**:
+    -   C and C++ callers routinely pass pointers to uninitialized stack
+        variables as out-parameters (e.g., `size_t out; ffi_fn(&out);`), and
+        header generators like `cbindgen` map `Option<&mut T>` to `T*` while
+        failing to unwrap `MaybeUninit<T>`.
+    -   Accept `pub extern "C" fn` (and internal FFI helpers) that take `&mut T`
+        or `Option<&mut T>` for C/C++ out-parameters when `T` is `Copy` (or has
+        no drop glue) and the implementation only writes to `*out` (or
+        initializes it via `ptr::write`) without reading or dropping it first.
+        Because Rust code handling `*out` must know that the value may be
+        uninitialized so it can handle it properly (e.g., using `ptr::write` or
+        avoiding reads/drops), this should be documented *somehow* (e.g., in the
+        function/helper doc comment or an enclosing comment, without needing a
+        `UCG#414` citation); if completely undocumented, flag it as **Incomplete
+        Safety Documentation** (not a soundness bug).
 
 `UnsafeCell` is not a general aliasing eraser. It permits interior mutation
 through shared references only for a pointed-to `UnsafeCell` value itself. A
