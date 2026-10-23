@@ -255,6 +255,42 @@ State the exact operation and its preconditions, cite checked artifact facts
 and proved lemmas or invariants, show the derivation, and prove resulting
 postconditions and invariant state on every applicable exit.
 
+For an `unsafe { ... }` block, anchor the proof to the block itself: put the
+`// SAFETY:` comment immediately before the `unsafe` token. Do not put the
+comment only inside the block immediately before one call. The block is the
+language-level unsafe boundary, and a comment buried inside it can appear to
+justify only that later statement while leaving earlier unsafe operations in
+the same block undocumented. If one block contains multiple unsafe operations,
+either prove every operation in the block from the leading comment or split the
+block so each operation has its own adjacent proof.
+
+Prefer:
+
+```rust
+// SAFETY:
+// - `dir.as_raw_fd()` is valid because `dir` is an open `File`.
+// - `policy` is fully initialized and has the layout required by this ioctl.
+// - `FS_IOC_SET_ENCRYPTION_POLICY` accepts a pointer to `fscrypt_policy_v2`.
+let ret = unsafe {
+    let policy = fscrypt_policy_v2 {
+        version: 2,
+        contents_encryption_mode: FSCRYPT_MODE_AES_256_XTS as u8,
+        filenames_encryption_mode: FSCRYPT_MODE_AES_256_CTS as u8,
+        flags,
+        master_key_identifier: identifier,
+        ..Default::default()
+    };
+    libc::ioctl(
+        dir.as_raw_fd(),
+        FS_IOC_SET_ENCRYPTION_POLICY.try_into().unwrap(),
+        &policy,
+    )
+};
+```
+
+over placing the `// SAFETY:` comment inside the `unsafe` block immediately
+before `libc::ioctl(...)`.
+
 When existing code can be validated only by reconstructing a material
 derivation absent from its safety comment, do not accept it silently. Include
 the reconstructed derivation—or the smallest missing portion—in the review,
