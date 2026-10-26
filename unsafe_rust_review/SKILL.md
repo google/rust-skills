@@ -446,6 +446,19 @@ The comment must not merely restate "caller guarantees this." It must show that
 the caller's documented obligation, plus local facts and invariants, logically
 implies the callee's documented safety contract.
 
+### Nested `unsafe fn`
+
+For an `unsafe fn` declared inside another function body, the `# Safety`
+section is optional. Whether to write one is a judgment call for the author and
+reviewers: a nested fn with a simple contract usually does without, one with a
+complex contract usually should have it.
+
+The nested fn's proof obligations must still be discharged: every use of it (a
+call or an FFI/callback registration) is an `unsafe` operation whose
+`// SAFETY:` comment must establish the nested fn's preconditions, and `unsafe`
+blocks inside its body still need their own `// SAFETY:` comments. Every other
+`unsafe fn` must document its preconditions under `# Safety`.
+
 ### Field invariants
 
 If a struct has private fields whose values are constrained by invariants that
@@ -827,7 +840,8 @@ memory-safety obligations onto a safe caller.
 This rule applies to private helper functions as well. Do not rely on module
 privacy to hide memory-safety preconditions on a safe function. If a private
 helper function must only be called under certain conditions to prevent UB, mark
-it `unsafe` and document those conditions under `# Safety`. Do not make it safe
+it `unsafe` and document those conditions under `# Safety` (optional for a
+nested `unsafe fn`; see "Nested `unsafe fn`"). Do not make it safe
 and rely on "internal module invariants" without an explicit safety contract, as
 future changes to the module might violate those invariants.
 
@@ -1611,8 +1625,8 @@ Reject proofs that refer to the implementation (body) of another function
 (including a caller, a callee, or a callback being passed around).
 
 Exception: closures and `fn` items nested inside the function under review are
-local code, and the proof may rely on their bodies. Stating the fact on the
-nested item is still preferred.
+local code, and the proof may rely on their bodies (see "Nested `unsafe fn`").
+Stating the fact on the nested item is still preferred.
 
 Require facts about other functions to be established in their documentation
 comments. Unsafe functions state their postconditions in the `# Safety` section.
