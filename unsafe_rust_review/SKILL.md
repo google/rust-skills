@@ -1380,6 +1380,10 @@ Acceptable use:
 // Not a proof premise: Miri tests cover this path. The proof is above.
 ```
 
+A test provides evidence only if it would actually fail if UB is present. For
+example, a test that builds a reference from a dangling pointer but never loads
+through it does execute UB, but would likely pass under ASan nevertheless.
+
 ### 4. "Zero length means null is fine"
 
 Reject for slice references:
