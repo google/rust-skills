@@ -75,6 +75,13 @@ Use the strictest reasonable interpretation of all requirements. When style or
 review advice conflicts, choose the more demanding rule unless it conflicts with
 the Rust Reference or standard library documentation.
 
+In review, findings come from "Mandatory fact classification", the two
+"Criteria" sections, "Reject patterns", the "Safe dependency and caller-provided
+code review rules", and "Reference creation is the unsafe operation". The
+remaining sections define the model and the conventions proofs cite, and
+"Authoring guidance" says how to write well; a departure from authoring guidance
+is not a finding.
+
 ## Core model
 
 ### Safety documentation is a theorem
@@ -478,75 +485,6 @@ Additionally, any safe code that mutates these fields must maintain the
 invariant, and any such mutation should be documented with a comment explaining
 how the invariant is maintained.
 
-### Invariants and contracts state only the property
-
-A `Safety invariant:` comment or a `# Safety` section states propositions.
-Keep the following out of it:
-
--   **Origin.** Do not specify which constructor or operation first
-    established the property.
--   **Maintainers.** Do not list the sites that currently uphold the invariant.
-    Each operation that might break the invariant (e.g., a write) must show
-    how it maintains the invariant.
--   **Dependents.** Do not list the sites that rely on the invariant. Each
-    user of the invariant cites it in its `// SAFETY:` comment.
--   **Rationale.** Do not justify a clause inside it. Rationale belongs in
-    implementation comments separate from the proposition.
-
-When reviewing, do not flag these sentences. They are not a defect; flag only a
-missing or false proposition.
-
-Bad (specifies the origin, lists maintainers and dependents):
-
-```rust
-struct Node {
-    // Safety invariant: `buf` is null or was allocated by `self.alloc()`, the
-    // allocator `Node::new_in()` installed. `push_text()` allocates through
-    // `self.alloc()`; `set_literal()` allocates through the parser's allocator,
-    // which is the same one; `set_info()` copies a buffer that came from any
-    // other allocator. `Drop` and `set_literal()` free the previous `buf`
-    // through `self.dealloc()`.
-    buf: *mut u8,
-}
-```
-
-Good:
-
-```rust
-struct Node {
-    // Safety invariant: `buf` is null or was allocated by `self.alloc()` with
-    // `Layout::array::<u8>(self.cap)`.
-    buf: *mut u8,
-}
-```
-
-Note that "allocated by `self.alloc()` with this layout" in this case is a part
-of the property, not a mere cross-reference to an origin.
-
-This rule also applies to a `# Safety` section. Bad (origin, rationale):
-
-```rust
-/// # Safety
-///
-/// `ptr` must be null or allocated by `new_in()` through `self.alloc()`,
-/// because `Drop` frees it through `self.dealloc()`. Pointers from
-/// `self.take_buf()` qualify.
-pub unsafe fn set_buf(&mut self, ptr: *mut u8, cap: usize)
-```
-
-Good:
-
-```rust
-/// # Safety
-///
-/// `ptr` must be null or allocated by `self.alloc` with
-/// `Layout::array::<u8>(cap)`. `self` takes ownership of the allocation.
-pub unsafe fn set_buf(&mut self, ptr: *mut u8, cap: usize)
-```
-
-Note that "`self` takes ownership of the allocation" is a postcondition the
-caller must know (criterion 10), not a statement about dependents.
-
 ### Safety-usable invariants on safe helpers
 
 Sometimes, safe helper functions exist to establish or verify invariants. While
@@ -572,25 +510,6 @@ SAFETY:` comment:
 // - Relies on the safety-usable invariant of `find_index` to ensure that
 //   the index is in bounds.
 ```
-
-### Cite a contract; do not copy it
-
-When a function's `# Safety` requires an argument to satisfy another contract (a
-type invariant, a function's postcondition, a callback's contract), link that
-contract:
-
-```rust
-/// - `callback`: `None`, or a function meeting the [`CallbackTy`] `# Safety`
-///   contract.
-```
-
-Do not paste the contract's text: copies drift, and an intra-doc link lets
-rustdoc catch a rename.
-
-This rule only applies to a `# Safety` section that delegates part of its
-contract to another documented contract. It does not apply to `// SAFETY:`
-proofs: a proof still enumerates the callee's obligations and discharges them
-one by one (see "What contract is being discharged?").
 
 ## Criteria for `# Safety` documentation
 
@@ -1182,7 +1101,12 @@ Postconditions are mandatory for operations such as:
 -   pin projection
 -   partially initialized arrays or buffers
 
-## Auditing procedure for writing safety comments
+## Authoring guidance
+
+This section says how to write safety text well. Reviewers do not flag
+departures from it; they flag a missing or false proposition.
+
+### Procedure for writing a safety comment
 
 When adding a `// SAFETY:` comment, follow this step-by-step procedure:
 
@@ -1199,6 +1123,91 @@ When adding a `// SAFETY:` comment, follow this step-by-step procedure:
     Preconditions, Invariants, Local Facts).
 5.  **Verify**: Re-read the code and the proof to ensure there are no logical
     gaps.
+
+### State only the property
+
+A `Safety invariant:` comment or a `# Safety` section states propositions.
+Keep the following out of it:
+
+-   **Origin.** Do not specify which constructor or operation first
+    established the property.
+-   **Maintainers.** Do not list the sites that currently uphold the invariant.
+    Each operation that might break the invariant (e.g., a write) must show
+    how it maintains the invariant.
+-   **Dependents.** Do not list the sites that rely on the invariant. Each
+    user of the invariant cites it in its `// SAFETY:` comment.
+-   **Rationale.** Do not justify a clause inside it. Rationale belongs in
+    implementation comments separate from the proposition.
+
+Bad (specifies the origin, lists maintainers and dependents):
+
+```rust
+struct Node {
+    // Safety invariant: `buf` is null or was allocated by `self.alloc()`, the
+    // allocator `Node::new_in()` installed. `push_text()` allocates through
+    // `self.alloc()`; `set_literal()` allocates through the parser's allocator,
+    // which is the same one; `set_info()` copies a buffer that came from any
+    // other allocator. `Drop` and `set_literal()` free the previous `buf`
+    // through `self.dealloc()`.
+    buf: *mut u8,
+}
+```
+
+Good:
+
+```rust
+struct Node {
+    // Safety invariant: `buf` is null or was allocated by `self.alloc()` with
+    // `Layout::array::<u8>(self.cap)`.
+    buf: *mut u8,
+}
+```
+
+Note that "allocated by `self.alloc()` with this layout" in this case is a part
+of the property, not a mere cross-reference to an origin.
+
+This rule also applies to a `# Safety` section. Bad (origin, rationale):
+
+```rust
+/// # Safety
+///
+/// `ptr` must be null or allocated by `new_in()` through `self.alloc()`,
+/// because `Drop` frees it through `self.dealloc()`. Pointers from
+/// `self.take_buf()` qualify.
+pub unsafe fn set_buf(&mut self, ptr: *mut u8, cap: usize)
+```
+
+Good:
+
+```rust
+/// # Safety
+///
+/// `ptr` must be null or allocated by `self.alloc` with
+/// `Layout::array::<u8>(cap)`. `self` takes ownership of the allocation.
+pub unsafe fn set_buf(&mut self, ptr: *mut u8, cap: usize)
+```
+
+Note that "`self` takes ownership of the allocation" is a postcondition the
+caller must know (criterion 10), not a statement about dependents.
+
+### Cite a contract; do not copy it
+
+When a function's `# Safety` requires an argument to satisfy another contract (a
+type invariant, a function's postcondition, a callback's contract), link that
+contract:
+
+```rust
+/// - `callback`: `None`, or a function meeting the [`CallbackTy`] `# Safety`
+///   contract.
+```
+
+Do not paste the contract's text: copies drift, and an intra-doc link lets
+rustdoc catch a rename.
+
+This rule only applies to a `# Safety` section that delegates part of its
+contract to another documented contract. It does not apply to `// SAFETY:`
+proofs: a proof still enumerates the callee's obligations and discharges them
+one by one (see "What contract is being discharged?").
 
 ## Required proof topics checklist
 
