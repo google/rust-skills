@@ -486,6 +486,25 @@ SAFETY:` comment:
 //   the index is in bounds.
 ```
 
+### Cite a contract; do not copy it
+
+When a function's `# Safety` requires an argument to satisfy another contract (a
+type invariant, a function's postcondition, a callback's contract), link that
+contract:
+
+```rust
+/// - `callback`: `None`, or a function meeting the [`CallbackTy`] `# Safety`
+///   contract.
+```
+
+Do not paste the contract's text: copies drift, and an intra-doc link lets
+rustdoc catch a rename.
+
+This rule only applies to a `# Safety` section that delegates part of its
+contract to another documented contract. It does not apply to `// SAFETY:`
+proofs: a proof still enumerates the callee's obligations and discharges them
+one by one (see "What contract is being discharged?").
+
 ## Criteria for `# Safety` documentation
 
 A `# Safety` section must satisfy all criteria in this section.
