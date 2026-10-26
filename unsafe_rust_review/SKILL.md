@@ -38,6 +38,15 @@ formal proof:
     operation.
 -   Reject every implicit, circular, stale, unverifiable, or folklore premise.
 
+## Conventions
+
+Every section carries a stable `` `[area.slug]` `` ID after its heading. Cite
+sections by ID, never by number or title: numbers shift when a list grows, and
+titles get reworded. Areas: `model`, `evidence`, `fact`, `conv`
+(conventions), `doc` (`# Safety` criteria), `comment` (comment criteria), `auth`
+(authoring guidance), `topics`, `axiom`, `rej` (reject patterns), `dep`
+(dependency rules), `ref` (reference creation).
+
 ## Activation criteria
 
 Use this skill whenever authoring or reviewing Rust code that contains, exposes,
@@ -75,16 +84,14 @@ Use the strictest reasonable interpretation of all requirements. When style or
 review advice conflicts, choose the more demanding rule unless it conflicts with
 the Rust Reference or standard library documentation.
 
-In review, findings come from "Mandatory fact classification", the two
-"Criteria" sections, "Reject patterns", the "Safe dependency and caller-provided
-code review rules", and "Reference creation is the unsafe operation". The
-remaining sections define the model and the conventions proofs cite, and
-"Authoring guidance" says how to write well; a departure from authoring guidance
-is not a finding.
+In review, findings come from `[fact.classify]`, `doc.*`, `comment.*`, `rej.*`,
+`dep.*`, and `ref.*`. The remaining sections define the model and the
+conventions proofs cite, and `auth.*` says how to write well; a departure from
+`auth.*` is not a finding.
 
-## Core model
+## Core model `[model]`
 
-### Safety documentation is a theorem
+### Safety documentation is a theorem `[model.theorem]`
 
 A `# Safety` section on an unsafe API states a theorem of the following shape:
 
@@ -96,7 +103,7 @@ then invoking or implementing this unsafe API preserves Rust soundness.
 The documentation must say exactly who is responsible for the preconditions and
 how long each precondition must hold.
 
-### Safety comments are proofs
+### Safety comments are proofs `[model.proof]`
 
 A safety comment (which may use `// SAFETY:`, `// safety:`, `// Safety:`, or
 their doc comment equivalents like `/// safety:`) immediately adjacent to an
@@ -117,7 +124,7 @@ guarantees documented by the crate-controlled or trusted-dependency functions it
 calls or installs (an unsafe fn's `# Safety` postconditions, or a safe fn's `#
 Safety-usable invariant`; never the docs of caller-provided code).
 
-### Soundness target
+### Soundness target `[model.soundness]`
 
 Unsafe code is sound only if safe Rust code using the abstraction cannot trigger
 undefined behavior without crossing an unsafe contract. The abstraction may have
@@ -125,11 +132,11 @@ logic bugs, panic, leak memory, or produce incorrect values, but it must not
 allow safe callers to cause UB merely by using safe APIs in type-correct but
 adversarial ways.
 
-## Authority and evidence hierarchy
+## Authority and evidence hierarchy `[evidence]`
 
 Use this hierarchy when writing or reviewing safety documentation.
 
-### 1. Core Rust axioms
+### 1. Core Rust axioms `[evidence.axioms]`
 
 The only core axioms for Rust language and standard-library semantics are:
 
@@ -145,7 +152,7 @@ behavior, Miri behavior, blog posts, examples, or "how Rust usually works"
 unless the fact is entailed by the Rust Reference or standard library
 documentation.
 
-### 2. Trusted opted-in dependency contracts
+### 2. Trusted opted-in dependency contracts `[evidence.deps]`
 
 It is acceptable to assume that safe dependencies intentionally selected by the
 code author work as documented.
@@ -171,7 +178,7 @@ This rule is a trust-boundary rule, not a Rust-language axiom:
 -   If the dependency API is unsafe, discharge its unsafe contract exactly like
     any other unsafe API.
 
-### 3. Caller-provided safe code is not trusted for semantic correctness
+### 3. Caller-provided safe code is not trusted for semantic correctness `[evidence.caller-code]`
 
 The "safe dependencies work as documented" assumption does not apply to
 caller-provided safe code.
@@ -231,7 +238,7 @@ call satisfies it through crate control, a trusted dependency contract, sealing,
 type-system enforcement, or direct inspection. `Pin::new_unchecked` is a key
 example: its caller must establish the required behavior of the concrete
 pointer type's `Deref`, `DerefMut`, and `Drop` implementations. (See also
-[Safety-usable invariants on safe helpers](#safety-usable-invariants-on-safe-helpers).)
+`[conv.safety-usable]`.)
 
 A sealed-trait proof must be mechanical, not aspirational. Documentation saying
 "do not implement this trait" is not sealing. A public supertrait, public marker
@@ -275,7 +282,7 @@ or violate documented semantic promises. If unsafe code temporarily breaks an
 invariant, do not call caller-provided safe code until the invariant has been
 restored or a guard ensures restoration during unwinding.
 
-### 4. Advisory sources
+### 4. Advisory sources `[evidence.advisory]`
 
 The following sources are explanatory or advisory unless their claims are also
 entailed by the Reference, std docs, a trusted dependency contract, or an
@@ -302,7 +309,7 @@ explicit project invariant:
 Use these sources to improve rigor and style, but do not treat them as final
 authority for UB, layout, aliasing, validity, or provenance.
 
-### 5. Project-local lemmas and invariants
+### 5. Project-local lemmas and invariants `[evidence.project]`
 
 Project-local invariants may be used as proof premises only if they are
 explicitly documented and maintained by all constructors, mutators, destructors,
@@ -325,7 +332,7 @@ Project-local invariants are not self-proving. Every unsafe proof that cites one
 must name it precisely, and review must verify that the invariant is established
 and preserved everywhere.
 
-### 6. Local facts
+### 6. Local facts `[evidence.local]`
 
 Local facts include facts visible at the program point:
 
@@ -347,7 +354,7 @@ checked earlier, the safety comment must explain why it has not been invalidated
 by mutation, reallocation, aliasing, callbacks, panics, drops, or interior
 mutability.
 
-## Mandatory fact classification
+## Mandatory fact classification `[fact.classify]`
 
 Every proof-sensitive sentence must be classifiable as one of:
 
@@ -369,9 +376,9 @@ A rigorous proof does not have to mechanically label every sentence with these
 words, but the classification must be obvious. If a reviewer asks "where does
 this fact come from?", the answer must be immediate and precise.
 
-## Core distinction: documentation vs comments
+## Core distinction: documentation vs comments `[conv]`
 
-### Safety documentation
+### Safety documentation `[conv.docs]`
 
 Safety documentation belongs on unsafe APIs and unsafe extension points. It
 states the theorem that callers or implementers must satisfy.
@@ -399,7 +406,7 @@ pub unsafe trait T { ... }
 unsafe extern "C" fn callback(...) { ... }
 ```
 
-### Safety comments
+### Safety comments `[conv.comments]`
 
 Safety comments belong next to concrete unsafe operations. They prove that the
 exact operation is valid at the exact program point.
@@ -407,7 +414,7 @@ exact operation is valid at the exact program point.
 For unsafe attributes, use a safety comment to justify the whole-program,
 linkage, ABI, symbol, section, or target-feature obligation being asserted.
 
-#### Comment Formatting
+#### Comment Formatting `[conv.format]`
 
 *   **Canonical spelling:** Generate `// SAFETY:` immediately before an unsafe operation or `unsafe impl`. This form is recognized by Clippy's `undocumented_unsafe_blocks` lint.
 *   **Review significance:** Capitalization or punctuation differences (such as `// Safety`, `/// safety`, or `// safety:`) do not change the semantic adequacy of a safety proof. When a project enables a lint that rejects the local spelling, mention the canonical form as a brief tooling note; do not report it as a soundness defect or let it dominate the review.
@@ -453,7 +460,7 @@ The comment must not merely restate "caller guarantees this." It must show that
 the caller's documented obligation, plus local facts and invariants, logically
 implies the callee's documented safety contract.
 
-### Nested `unsafe fn`
+### Nested `unsafe fn` `[conv.nested-fn]`
 
 For an `unsafe fn` declared inside another function body, the `# Safety`
 section is optional. Whether to write one is a judgment call for the author and
@@ -466,7 +473,7 @@ call or an FFI/callback registration) is an `unsafe` operation whose
 blocks inside its body still need their own `// SAFETY:` comments. Every other
 `unsafe fn` must document its preconditions under `# Safety`.
 
-### Field invariants
+### Field invariants `[conv.field-invariant]`
 
 If a struct has private fields whose values are constrained by invariants that
 are necessary for the correctness of unsafe code inside the struct, those
@@ -485,7 +492,7 @@ Additionally, any safe code that mutates these fields must maintain the
 invariant, and any such mutation should be documented with a comment explaining
 how the invariant is maintained.
 
-### Safety-usable invariants on safe helpers
+### Safety-usable invariants on safe helpers `[conv.safety-usable]`
 
 Sometimes, safe helper functions exist to establish or verify invariants. While
 these are safe to call, unsafe code may rely on their correctness for soundness.
@@ -511,11 +518,11 @@ SAFETY:` comment:
 //   the index is in bounds.
 ```
 
-## Criteria for `# Safety` documentation
+## Criteria for `# Safety` documentation `[doc]`
 
 A `# Safety` section must satisfy all criteria in this section.
 
-### 1. Name the responsible party
+### 1. Name the responsible party `[doc.party]`
 
 State whether the obligations are on the caller, implementer, linker, host
 environment, foreign code, whole program, or some combination.
@@ -538,7 +545,7 @@ Use this for unsafe traits:
 
 Do not use vague subjects such as "it must be ensured." Say who must ensure it.
 
-### 2. Be complete enough to imply soundness
+### 2. Be complete enough to imply soundness `[doc.complete]`
 
 The contract must include every precondition needed to prevent UB through this
 API. A proof reviewer should be able to derive the safety of every internal
@@ -574,7 +581,7 @@ Pointer validity is operation-specific. A pointer is not simply "valid" in the
 abstract. It may be valid for one kind of access, one byte range, one lifetime,
 or one aliasing mode, but invalid for another.
 
-### 3. Specify temporal scope
+### 3. Specify temporal scope `[doc.temporal]`
 
 Every obligation must say when it must hold.
 
@@ -609,7 +616,7 @@ function returns. Returned references, futures, iterators, guards, trait
 objects, raw handles, and pinned values often extend obligations beyond the
 initial call.
 
-### 4. Specify byte ranges, allocation identity, alignment, and initialization
+### 4. Specify byte ranges, allocation identity, alignment, and initialization `[doc.ranges]`
 
 For pointer, slice, buffer, allocation, and FFI APIs, the contract must state
 every relevant low-level condition:
@@ -649,7 +656,7 @@ Example:
 ///    this function takes ownership.
 ```
 
-### 5. Distinguish validity, initialization, and aliasing
+### 5. Distinguish validity, initialization, and aliasing `[doc.validity-init-aliasing]`
 
 These are separate proof obligations.
 
@@ -669,7 +676,7 @@ A pointer can be:
 Never collapse these into "valid pointer." State each property explicitly when
 relevant.
 
-### 6. Do not rely on folklore facts
+### 6. Do not rely on folklore facts `[doc.folklore]`
 
 Reject any proof sentence whose source is "everyone knows Rust works this way."
 
@@ -703,7 +710,7 @@ Examples of facts that must be grounded in Reference or std docs:
 The safety proof should cite or paraphrase exact contracts rather than importing
 informal knowledge.
 
-### 7. Do not impose hidden safety obligations on safe callers
+### 7. Do not impose hidden safety obligations on safe callers `[doc.hidden-obligations]`
 
 A safe function must not require the caller to uphold unchecked memory-safety
 preconditions. If such preconditions are required, the function should be
@@ -760,7 +767,7 @@ This rule applies to private helper functions as well. Do not rely on module
 privacy to hide memory-safety preconditions on a safe function. If a private
 helper function must only be called under certain conditions to prevent UB, mark
 it `unsafe` and document those conditions under `# Safety` (optional for a
-nested `unsafe fn`; see "Nested `unsafe fn`"). Do not make it safe
+nested `unsafe fn`, `[conv.nested-fn]`). Do not make it safe
 and rely on "internal module invariants" without an explicit safety contract, as
 future changes to the module might violate those invariants.
 
@@ -787,7 +794,7 @@ automatic null checking via niche optimization) does **not** need to be marked
     [Uninitialized memory behind references (`UCG#414`)](#uninitialized-memory-behind-references-ucg414)
     rules below.
 
-### 8. Do not strengthen contracts you do not own
+### 8. Do not strengthen contracts you do not own `[doc.no-strengthen]`
 
 For unsafe functions inside traits, the implementation cannot arbitrarily
 require stricter preconditions than the trait method's contract allows. A caller
@@ -819,7 +826,7 @@ using the trait may call according to the trait contract, not the
 implementation's private contract. This is unsound unless the trait contract
 permits the strengthening.
 
-### 9. Separate semantic preconditions from memory-safety preconditions
+### 9. Separate semantic preconditions from memory-safety preconditions `[doc.semantic-vs-memory]`
 
 A function may have ordinary semantic requirements, but memory-safety
 requirements belong in `# Safety` only if violation can lead to UB.
@@ -837,7 +844,7 @@ For unsafe APIs, the `# Safety` section must contain all unchecked memory-safety
 preconditions. Do not hide memory-safety preconditions in prose under `#
 Panics`, `# Errors`, examples, type names, module docs, or comments elsewhere.
 
-### 10. Include postconditions when unsafe callers may rely on them
+### 10. Include postconditions when unsafe callers may rely on them `[doc.postconditions]`
 
 A `# Safety` section should usually state not only what the caller must
 guarantee, but also what the function guarantees in return when those
@@ -859,7 +866,7 @@ Examples:
 Postconditions are especially important for unsafe traits and unsafe
 constructors whose results are later used by safe code or other unsafe proofs.
 
-### 11. Do not rely on the absence of an impl
+### 11. Do not rely on the absence of an impl `[doc.absent-impl]`
 
 An `unsafe impl`'s obligation must be discharged with facts that remain true
 under program extension: new crates, new types, new impls. The impl set of a
@@ -943,14 +950,14 @@ Good:
     `T: UnsafeTr + ?Sized` coverage, closing the impl set by coherence.
 -   Seal the safe trait, with sealing airtight per the sealing rule.
 
-## Criteria for safety comments
+## Criteria for safety comments `[comment]`
 
 A safety comment (e.g., using `// safety:`, `// SAFETY:`, or doc comment
 equivalents like `/// safety:`) must answer all five questions in this section,
 plus any specialized rule that applies to the operation, such as reference
 creation, FFI, global state, or target-feature-sensitive execution.
 
-### 1. What exact unsafe operation is being justified?
+### 1. What exact unsafe operation is being justified? `[comment.operation]`
 
 Bad:
 
@@ -973,7 +980,7 @@ Stricter rule: prefer one unsafe operation per unsafe block. If a block contains
 multiple unsafe operations, the comment must itemize and prove each one
 separately.
 
-### 2. What contract is being discharged?
+### 2. What contract is being discharged? `[comment.contract]`
 
 The comment must name the contract source and the relevant obligations.
 
@@ -1001,7 +1008,7 @@ Do not merely say "bounds checked above" unless the callee contract is only a
 bounds obligation. Most pointer operations have allocation, alignment,
 initialization, provenance, aliasing, and size obligations too.
 
-### 3. Which premises prove the contract?
+### 3. Which premises prove the contract? `[comment.premises]`
 
 Every premise must be classified as one of:
 
@@ -1035,7 +1042,7 @@ Good:
 let x = unsafe { slice.get_unchecked(i) };
 ```
 
-### 4. Why do the premises still hold at this program point?
+### 4. Why do the premises still hold at this program point? `[comment.still-hold]`
 
 The proof must account for intervening code.
 
@@ -1066,7 +1073,7 @@ Many comments fail because they cite a fact that was true earlier but may have
 been invalidated by mutation, reallocation, aliasing, callbacks, drops, panics,
 or interior mutability.
 
-### 5. What state changes after the unsafe operation?
+### 5. What state changes after the unsafe operation? `[comment.state-change]`
 
 Unsafe comments must document postconditions when the operation changes
 ownership, initialization, aliasing, lifetime, pinning, or drop obligations.
@@ -1101,12 +1108,12 @@ Postconditions are mandatory for operations such as:
 -   pin projection
 -   partially initialized arrays or buffers
 
-## Authoring guidance
+## Authoring guidance `[auth]`
 
 This section says how to write safety text well. Reviewers do not flag
 departures from it; they flag a missing or false proposition.
 
-### Procedure for writing a safety comment
+### Procedure for writing a safety comment `[auth.procedure]`
 
 When adding a `// SAFETY:` comment, follow this step-by-step procedure:
 
@@ -1124,7 +1131,7 @@ When adding a `// SAFETY:` comment, follow this step-by-step procedure:
 5.  **Verify**: Re-read the code and the proof to ensure there are no logical
     gaps.
 
-### State only the property
+### State only the property `[auth.property-only]`
 
 A `Safety invariant:` comment or a `# Safety` section states propositions.
 Keep the following out of it:
@@ -1188,9 +1195,9 @@ pub unsafe fn set_buf(&mut self, ptr: *mut u8, cap: usize)
 ```
 
 Note that "`self` takes ownership of the allocation" is a postcondition the
-caller must know (criterion 10), not a statement about dependents.
+caller must know (`[doc.postconditions]`), not a statement about dependents.
 
-### Cite a contract; do not copy it
+### Cite a contract; do not copy it `[auth.cite-contract]`
 
 When a function's `# Safety` requires an argument to satisfy another contract (a
 type invariant, a function's postcondition, a callback's contract), link that
@@ -1207,9 +1214,9 @@ rustdoc catch a rename.
 This rule only applies to a `# Safety` section that delegates part of its
 contract to another documented contract. It does not apply to `// SAFETY:`
 proofs: a proof still enumerates the callee's obligations and discharges them
-one by one (see "What contract is being discharged?").
+one by one (`[comment.contract]`).
 
-## Required proof topics checklist
+## Required proof topics checklist `[topics]`
 
 For every unsafe site, check whether each topic is relevant. If relevant, the
 proof must address it explicitly.
@@ -1342,12 +1349,12 @@ proof must address it explicitly.
 | Interior mutability | `UnsafeCell`, `Cell`, `RefCell`, atomics, locks, and   |
 :                     : global state are accounted for.                        :
 
-## Core axiom lookup discipline
+## Core axiom lookup discipline `[axiom]`
 
 When a proof relies on a Rust fact, trace it to the relevant Reference or std
 documentation.
 
-### Undefined behavior and validity
+### Undefined behavior and validity `[axiom.ub]`
 
 Use the Rust Reference for:
 
@@ -1370,7 +1377,7 @@ Example proof phrasing:
 // bytes as `bool`. Therefore `b` is a valid `bool`.
 ```
 
-### Standard-library unsafe contracts
+### Standard-library unsafe contracts `[axiom.std]`
 
 Use the std docs for exact contracts of standard-library unsafe APIs. Do not
 approximate.
@@ -1401,11 +1408,11 @@ Common APIs that require exact contract extraction:
 For each such call, copy the contract into proof obligations and discharge them
 one by one.
 
-## Reject patterns
+## Reject patterns `[rej]`
 
 The following patterns should fail review.
 
-### 1. "Pointer is valid"
+### 1. "Pointer is valid" `[rej.pointer-valid]`
 
 Reject:
 
@@ -1433,7 +1440,7 @@ For slices or ranges, require the full range:
 // range lies in one live allocation.
 ```
 
-### 2. "Caller guarantees it"
+### 2. "Caller guarantees it" `[rej.caller-guarantees]`
 
 Reject:
 
@@ -1454,7 +1461,7 @@ Require:
 unsafe { callee(ptr, len) }
 ```
 
-### 3. "Miri passes"
+### 3. "Miri passes" `[rej.miri-passes]`
 
 Reject as proof:
 
@@ -1476,7 +1483,7 @@ A test provides evidence only if it would actually fail if UB is present. For
 example, a test that builds a reference from a dangling pointer but never loads
 through it does execute UB, but would likely pass under ASan nevertheless.
 
-### 4. "Zero length means null is fine"
+### 4. "Zero length means null is fine" `[rej.zero-len-null]`
 
 Reject for slice references:
 
@@ -1489,7 +1496,7 @@ The standard-library slice constructors require non-null aligned pointers even
 for zero-length slices and ZSTs. Use a proper dangling-but-non-null aligned
 pointer where the API permits it.
 
-### 5. Packed field address through intermediate reference
+### 5. Packed field address through intermediate reference `[rej.packed-ref]`
 
 Reject:
 
@@ -1507,7 +1514,7 @@ let p = &raw const packed.field;
 let value = unsafe { p.read_unaligned() };
 ```
 
-### 6. "Transmute because same size"
+### 6. "Transmute because same size" `[rej.transmute-size]`
 
 Reject:
 
@@ -1543,7 +1550,7 @@ When code reads, compares, hashes, serializes, or transmutes raw struct bytes:
 - Reading or hashing `size_of::<T>()` raw bytes behind `&T` is invalid whenever `T` contains uninitialized padding.
 - Fieldwise operations should be preferred over whole-object raw byte operations.
 
-### 7. "Vec owns this pointer"
+### 7. "Vec owns this pointer" `[rej.vec-owns]`
 
 Reject:
 
@@ -1576,7 +1583,7 @@ Prefer a consuming standard-library or project API such as `into_raw` or `into_r
 
 When manual extraction is unavoidable, disable the old owner's automatic `Drop` (e.g. using `std::mem::ManuallyDrop`) before constructing any replacement owner. After the replacement owner exists, do not read, move, pass, forget, or otherwise use the invalidated old value. Audit every possible panic and early-return point: failure may leak, but must not create two destructors for the same resource or permit access through an invalid owner.
 
-### 8. Safe trait law relied on for memory safety
+### 8. Safe trait law relied on for memory safety `[rej.trait-law]`
 
 Reject:
 
@@ -1600,7 +1607,7 @@ Require:
 // only for the number of elements actually initialized.
 ```
 
-### 9. Callback cannot panic or reenter
+### 9. Callback cannot panic or reenter `[rej.no-panic]`
 
 Reject:
 
@@ -1614,7 +1621,7 @@ A caller-provided safe callback may panic, reenter, or mutate reachable state
 through safe mechanisms. If invariants are temporarily broken, use guards or
 avoid callbacks until invariants are restored.
 
-### 10. Dependency trust confused with caller trust
+### 10. Dependency trust confused with caller trust `[rej.dep-vs-caller]`
 
 Reject:
 
@@ -1628,13 +1635,13 @@ unsafe { rely_on_sortedness_for_memory_safety(&v) }
 comparator is not trusted for memory-safety-relevant semantic correctness. If
 sortedness is memory-safety-critical, validate it or require an unsafe contract.
 
-### 11. Proof by reading another function's body
+### 11. Proof by reading another function's body `[rej.other-body]`
 
 Reject proofs that refer to the implementation (body) of another function
 (including a caller, a callee, or a callback being passed around).
 
 Exception: closures and `fn` items nested inside the function under review are
-local code, and the proof may rely on their bodies (see "Nested `unsafe fn`").
+local code, and the proof may rely on their bodies (`[conv.nested-fn]`).
 Stating the fact on the nested item is still preferred.
 
 Require facts about other functions to be established in their documentation
@@ -1690,9 +1697,9 @@ pub unsafe extern "C" fn my_callback(ctx: *mut Ctx) -> *mut Node { ... }
 unsafe { register_callback(reg, Some(my_callback)) };
 ```
 
-## Safe dependency and caller-provided code review rules
+## Safe dependency and caller-provided code review rules `[dep]`
 
-### Rule A: Intentionally selected safe dependencies may be trusted as documented
+### Rule A: Intentionally selected safe dependencies may be trusted as documented `[dep.selected]`
 
 When this crate intentionally uses a safe dependency API, the proof may assume
 the API behaves as documented.
@@ -1715,7 +1722,7 @@ let n = trusted_dependency::parse_header(bytes)?;
 However, this is a project trust assumption. It should be explicit when
 proof-relevant and should be version-aware for third-party dependencies.
 
-### Rule B: Caller-provided safe code is adversarial
+### Rule B: Caller-provided safe code is adversarial `[dep.caller-adversarial]`
 
 Do not rely on caller-provided safe code for memory-safety-relevant semantics.
 
@@ -1751,14 +1758,14 @@ f()
 drop(x)
 ```
 
-### Rule C: Safe trait laws are not safety contracts
+### Rule C: Safe trait laws are not safety contracts `[dep.trait-laws]`
 
 A safe trait's documentation may impose semantic laws, but violating those laws
 must not cause UB in your unsafe abstraction. If unsafe code must rely on a law,
 make the trait unsafe, use an existing unsafe trait with the required contract,
 validate dynamically, or constrain implementations to trusted types.
 
-#### Sealed-trait reliance must be airtight
+#### Sealed-trait reliance must be airtight `[dep.sealed]`
 
 A sealed safe trait may be treated as trusted only if the proof establishes that
 all implementations are controlled by this crate or by a trusted opted-in
@@ -1812,7 +1819,7 @@ can implement the trait, override methods, choose associated types/constants, or
 provide values that the default method uses to establish a
 memory-safety-relevant fact.
 
-### Rule D: Dependencies invoking caller code inherit caller-code distrust
+### Rule D: Dependencies invoking caller code inherit caller-code distrust `[dep.transitive]`
 
 If a trusted dependency calls a caller-provided closure, comparator, allocator,
 trait method, or callback, the dependency's trust does not make that
@@ -1825,7 +1832,7 @@ Trusted: dependency implementation follows its documented behavior.
 Untrusted: caller-provided callback or trait implementation may behave arbitrarily within its safe type signature.
 ```
 
-### Rule E: Safe code may be safe but still hostile to invariants
+### Rule E: Safe code may be safe but still hostile to invariants `[dep.hostile]`
 
 Safe caller-provided code cannot be assumed to preserve your undocumented
 invariants. It may observe or mutate through any safe capability you give it.
@@ -1845,7 +1852,7 @@ Therefore:
 -   Do not assume unknown `Drop` implementations are inert.
 -   Do not assume unknown trait methods are deterministic.
 
-## Reference creation is the unsafe operation
+## Reference creation is the unsafe operation `[ref.creation]`
 
 Creating a Rust reference-like value from raw parts is itself a safety
 assertion. The operation being justified is not merely the later load, store,
@@ -1900,7 +1907,7 @@ That proves at most that the author reduced the size of the assertion. It does
 not prove that the assertion is true. The proof must still establish each
 validity, aliasing, lifetime, and metadata obligation at creation time.
 
-### Uninitialized memory behind references (`UCG#414`) {#uninitialized-memory-behind-references-ucg414}
+### Uninitialized memory behind references (`UCG#414`) `[ref.uninit]` {#uninitialized-memory-behind-references-ucg414}
 
 Per [Rust Unsafe Code Guidelines Issue #414](https://github.com/rust-lang/unsafe-code-guidelines/issues/414)
 (and the [Rust Reference on undefined behavior](https://doc.rust-lang.org/reference/behavior-considered-undefined.html)),
