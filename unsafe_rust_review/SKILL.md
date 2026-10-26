@@ -416,11 +416,21 @@ linkage, ABI, symbol, section, or target-feature obligation being asserted.
 
 #### Comment Formatting `[conv.format]`
 
-*   **Canonical spelling:** Generate `// SAFETY:` immediately before an unsafe operation or `unsafe impl`. This form is recognized by Clippy's `undocumented_unsafe_blocks` lint.
-*   **Review significance:** Capitalization or punctuation differences (such as `// Safety`, `/// safety`, or `// safety:`) do not change the semantic adequacy of a safety proof. When a project enables a lint that rejects the local spelling, mention the canonical form as a brief tooling note; do not report it as a soundness defect or let it dominate the review.
-*   **Doc Comments**: Safety comments can be regular comments (e.g., `// safety`) or doc comments (e.g., `/// safety`).
-*   **Safety Comments on `unsafe impl`**: A doc comment or regular comment placed directly on an `unsafe impl` is a completely acceptable and valid safety comment.
-*   **Public API Documentation**: Use `/// # Safety` for the caller or implementer contract on public unsafe functions and traits.
+*   **Canonical spelling:** Generate `// SAFETY:` immediately before an unsafe
+    operation or `unsafe impl`. This form is recognized by Clippy's
+    `undocumented_unsafe_blocks` lint.
+*   **Review significance:** Capitalization or punctuation differences (such as
+    `// Safety`, `/// safety`, or `// safety:`) do not change the semantic
+    adequacy of a safety proof. When a project enables a lint that rejects the
+    local spelling, mention the canonical form as a brief tooling note; do not
+    report it as a soundness defect or let it dominate the review.
+*   **Doc Comments**: Safety comments can be regular comments (e.g., `//
+    safety`) or doc comments (e.g., `/// safety`).
+*   **Safety Comments on `unsafe impl`**: A doc comment or regular comment
+    placed directly on an `unsafe impl` is a completely acceptable and valid
+    safety comment.
+*   **Public API Documentation**: Use `/// # Safety` for the caller or
+    implementer contract on public unsafe functions and traits.
 
 Example:
 
@@ -772,23 +782,25 @@ and rely on "internal module invariants" without an explicit safety contract, as
 future changes to the module might violate those invariants.
 
 **Exception for FFI-exported functions (`extern "C"`):** The rule against safe
-functions imposing unchecked preconditions applies to **safe Rust callers**. Every
-call from C or C++ is already outside Rust's type-system guarantees on the foreign
-side. A `pub extern "C" fn` (or Crubit/UniFFI export) that accepts references or
-`Option<&T>` / `Option<&mut T>` (e.g., so `cbindgen` emits `T*` while Rust gets
-automatic null checking via niche optimization) does **not** need to be marked
-`unsafe extern "C" fn` if safe Rust callers cannot cause UB through its signature:
+functions imposing unchecked preconditions applies to **safe Rust callers**.
+Every call from C or C++ is already outside Rust's type-system guarantees on the
+foreign side. A `pub extern "C" fn` (or Crubit/UniFFI export) that accepts
+references or `Option<&T>` / `Option<&mut T>` (e.g., so `cbindgen` emits `T*`
+while Rust gets automatic null checking via niche optimization) does **not**
+need to be marked `unsafe extern "C" fn` if safe Rust callers cannot cause UB
+through its signature:
 
 -   If a `pub extern "C" fn` takes `Option<&T>` or `Option<&mut T>`, safe Rust
-    callers are already forced by the compiler to pass valid, aligned, non-aliasing
-    references. Satisfying alignment, dereferenceability, and non-aliasing on the
-    C/C++ side is the foreign caller's responsibility. Do not flag such a function
-    for lacking `unsafe` or demand raw pointers `*mut T` instead of `Option<&mut T>`.
+    callers are already forced by the compiler to pass valid, aligned,
+    non-aliasing references. Satisfying alignment, dereferenceability, and
+    non-aliasing on the C/C++ side is the foreign caller's responsibility. Do
+    not flag such a function for lacking `unsafe` or demand raw pointers `*mut
+    T` instead of `Option<&mut T>`.
 -   By contrast, if a `pub extern "C" fn` accepts raw pointers (`*const T` or
-    `*mut T`) and dereferences them internally without validating them, it **must**
-    be marked `unsafe extern "C" fn` (with `# Safety` documentation), because
-    otherwise *safe Rust* code could call it with a dangling or invalid pointer
-    and trigger UB.
+    `*mut T`) and dereferences them internally without validating them, it
+    **must** be marked `unsafe extern "C" fn` (with `# Safety` documentation),
+    because otherwise *safe Rust* code could call it with a dangling or invalid
+    pointer and trigger UB.
 -   For C/C++ out-parameters passed as `&mut T` or `Option<&mut T>` (which C/C++
     callers commonly pass pointing to uninitialized stack memory), apply the
     [Uninitialized memory behind references (`UCG#414`)](#uninitialized-memory-behind-references-ucg414)
@@ -930,12 +942,12 @@ Iffy (accept, with an explicit label):
     unsafe impl UnsafeTr for ExampleStruct {}
     ```
 
-    Sound today, but only because current coherence rules forbid the
-    downstream impl. The orphan rule exists to make enforcing coherence easier,
-    but it is not a stated soundness guarantee, and active proposals would weaken
-    it. Accept only when cases 1 and 2 are absent (non-dyn-compatible unsafe trait,
-    no fundamental blankets) and the premise is flagged as orphan-rule-reliant so it
-    can be found and re-audited if coherence rules change. Flag as fragile
+    Sound today, but only because current coherence rules forbid the downstream
+    impl. The orphan rule exists to make enforcing coherence easier, but it is
+    not a stated soundness guarantee, and active proposals would weaken it.
+    Accept only when cases 1 and 2 are absent (non-dyn-compatible unsafe trait,
+    no fundamental blankets) and the premise is flagged as orphan-rule-reliant
+    so it can be found and re-audited if coherence rules change. Flag as fragile
     and prefer a restructuring below.
 
 Good:
@@ -1538,17 +1550,24 @@ sufficient.
 
 #### Non-Compositionality of Niches and Outer Layouts
 
-Never assume that layout equivalence of inner types composes to outer types:
-- Although `UnsafeCell<T>` and `MaybeUninit<T>` have identical size and alignment to `T`, wrapping `T` inside them inhibits or changes niche optimizations for enclosing types.
-- For example, `Option<core::ptr::NonNull<u8>>` is 8 bytes due to null-pointer niche optimization, whereas `Option<core::cell::UnsafeCell<core::ptr::NonNull<u8>>>` or `Option<core::mem::MaybeUninit<core::ptr::NonNull<u8>>>` may be 16 bytes.
-- Transmuting between `Outer<T>` and `Outer<UnsafeCell<T>>` or `Outer<MaybeUninit<T>>` is unsound unless the layout of the entire outer type is explicitly proved.
+Never assume that layout equivalence of inner types composes to outer types: -
+Although `UnsafeCell<T>` and `MaybeUninit<T>` have identical size and alignment
+to `T`, wrapping `T` inside them inhibits or changes niche optimizations for
+enclosing types. - For example, `Option<core::ptr::NonNull<u8>>` is 8 bytes due
+to null-pointer niche optimization, whereas
+`Option<core::cell::UnsafeCell<core::ptr::NonNull<u8>>>` or
+`Option<core::mem::MaybeUninit<core::ptr::NonNull<u8>>>` may be 16 bytes. -
+Transmuting between `Outer<T>` and `Outer<UnsafeCell<T>>` or
+`Outer<MaybeUninit<T>>` is unsound unless the layout of the entire outer type is
+explicitly proved.
 
 #### Padding and Raw Byte Access
 
-When code reads, compares, hashes, serializes, or transmutes raw struct bytes:
-- Padding bytes are uninitialized by default and not preserved across typed moves/copies.
-- Reading or hashing `size_of::<T>()` raw bytes behind `&T` is invalid whenever `T` contains uninitialized padding.
-- Fieldwise operations should be preferred over whole-object raw byte operations.
+When code reads, compares, hashes, serializes, or transmutes raw struct bytes: -
+Padding bytes are uninitialized by default and not preserved across typed
+moves/copies. - Reading or hashing `size_of::<T>()` raw bytes behind `&T` is
+invalid whenever `T` contains uninitialized padding. - Fieldwise operations
+should be preferred over whole-object raw byte operations.
 
 ### 7. "Vec owns this pointer" `[rej.vec-owns]`
 
@@ -1566,9 +1585,11 @@ Require proof of:
     -   exact allocation layout (`Layout::array::<T>(cap)`);
     -   alignment equality, not merely compatibility;
     -   capacity from the original allocation;
-    -   allocation size constraints (`cap * size_of::<T>() <= isize::MAX as usize`);
+    -   allocation size constraints (`cap * size_of::<T>() <= isize::MAX as
+        usize`);
 -   **When `size_of::<T>() == 0 || cap == 0`**:
-    -   `ptr` is non-null and suitably aligned for `T` (e.g. `NonNull::dangling()`);
+    -   `ptr` is non-null and suitably aligned for `T` (e.g.
+        `NonNull::dangling()`);
     -   no heap allocation required;
 -   **In all cases**:
     -   `len <= cap`;
@@ -1579,9 +1600,16 @@ Require proof of:
 
 #### Sequencing Ownership Transfer
 
-Prefer a consuming standard-library or project API such as `into_raw` or `into_raw_parts` that ends the old ownership state while yielding the raw components.
+Prefer a consuming standard-library or project API such as `into_raw` or
+`into_raw_parts` that ends the old ownership state while yielding the raw
+components.
 
-When manual extraction is unavoidable, disable the old owner's automatic `Drop` (e.g. using `std::mem::ManuallyDrop`) before constructing any replacement owner. After the replacement owner exists, do not read, move, pass, forget, or otherwise use the invalidated old value. Audit every possible panic and early-return point: failure may leak, but must not create two destructors for the same resource or permit access through an invalid owner.
+When manual extraction is unavoidable, disable the old owner's automatic `Drop`
+(e.g. using `std::mem::ManuallyDrop`) before constructing any replacement owner.
+After the replacement owner exists, do not read, move, pass, forget, or
+otherwise use the invalidated old value. Audit every possible panic and
+early-return point: failure may leak, but must not create two destructors for
+the same resource or permit access through an invalid owner.
 
 ### 8. Safe trait law relied on for memory safety `[rej.trait-law]`
 
@@ -1780,8 +1808,8 @@ of the following:
     supertrait, blanket impl, associated type escape hatch, marker type,
     macro-generated impl hook, feature-gated impl hook, re-exported private
     token, or type alias;
--   downstream safe code cannot construct, name, clone, deserialize, or otherwise
-    obtain any sealing token through any safe public surface;
+-   downstream safe code cannot construct, name, clone, deserialize, or
+    otherwise obtain any sealing token through any safe public surface;
 -   public fields, public constructors, re-exports, macros, proc macros, or
     generated code cannot create values that claim the sealed invariant without
     going through reviewed constructors;
@@ -1838,12 +1866,13 @@ Safe caller-provided code cannot be assumed to preserve your undocumented
 invariants. It may observe or mutate through any safe capability you give it.
 Therefore:
 
--   Do not expose uninitialized or partially initialized storage to caller code as
-    initialized `T`, `&T`, `&mut T`, `[T]`, or any other type whose validity
+-   Do not expose uninitialized or partially initialized storage to caller code
+    as initialized `T`, `&T`, `&mut T`, `[T]`, or any other type whose validity
     requires initialization. Typed exposure as `MaybeUninit<T>` (e.g.
     `Vec::spare_capacity_mut`) may be sound when the API keeps initialized
-    length/ownership metadata accurate and does not let safe caller actions cause
-    uninitialized storage to be read, dropped, or otherwise treated as `T`.
+    length/ownership metadata accurate and does not let safe caller actions
+    cause uninitialized storage to be read, dropped, or otherwise treated as
+    `T`.
 -   Do not call callbacks while `Vec::len` is inconsistent with initialized
     elements.
 -   Do not hold invalid references across calls to unknown code.
@@ -1909,8 +1938,10 @@ validity, aliasing, lifetime, and metadata obligation at creation time.
 
 ### Uninitialized memory behind references (`UCG#414`) `[ref.uninit]` {#uninitialized-memory-behind-references-ucg414}
 
-Per [Rust Unsafe Code Guidelines Issue #414](https://github.com/rust-lang/unsafe-code-guidelines/issues/414)
-(and the [Rust Reference on undefined behavior](https://doc.rust-lang.org/reference/behavior-considered-undefined.html)),
+Per
+[Rust Unsafe Code Guidelines Issue #414](https://github.com/rust-lang/unsafe-code-guidelines/issues/414)
+(and the
+[Rust Reference on undefined behavior](https://doc.rust-lang.org/reference/behavior-considered-undefined.html)),
 the validity invariant of a reference (`&T`, `&mut T`, `&[T]`, `&mut [T]`) is
 shallow: it does **not** depend on the initialized contents of the pointed-to
 memory. Merely constructing a reference or slice reference to uninitialized
@@ -1937,23 +1968,24 @@ the following distinctions strictly:
         uninitialized memory, which is immediate UB. Overwriting `*r = val` on
         uninitialized memory is sound **only** when `T` is `Copy` or trivially
         has no drop glue; otherwise, `ptr::write` or `MaybeUninit` is required.
-    -   **Exposing uninitialized references to code that assumes initialization**:
-        Returning or passing `&T`, `&mut T`, `&[T]`, or `&mut [T]` pointing to
-        uninitialized memory across a safe public API boundary, to untrusted
-        callbacks, or to internal code that is not documented as accepting
-        uninitialized references is unsound, because ordinary Rust code is
-        entitled to read from `&T`/`&[T]`/`&mut T` or assign to `&mut T`
+    -   **Exposing uninitialized references to code that assumes
+        initialization**: Returning or passing `&T`, `&mut T`, `&[T]`, or `&mut
+        [T]` pointing to uninitialized memory across a safe public API boundary,
+        to untrusted callbacks, or to internal code that is not documented as
+        accepting uninitialized references is unsound, because ordinary Rust
+        code is entitled to read from `&T`/`&[T]`/`&mut T` or assign to `&mut T`
         (running drop glue). Passing or returning an uninitialized reference to
         an `unsafe` function or internal helper is only sound when that boundary
         explicitly documents that the reference may be uninitialized so the Rust
         code handling it knows not to read or drop it (e.g., using `ptr::write`
         or only assigning when `T` has no drop glue).
-2.  **Sound Reference Creation to Uninitialized Memory (Documentation Obligation)**:
+2.  **Sound Reference Creation to Uninitialized Memory (Documentation
+    Obligation)**:
     -   If `&T`, `&mut T`, `&[T]`, or `&mut [T]` is created pointing to
-        uninitialized memory and is **not** used unsafely (i.e., it is never read
-        before initialization, never assigned via `*r = val` when `T` has drop
-        glue, and never passed to code that assumes initialization), the code is
-        **sound**.
+        uninitialized memory and is **not** used unsafely (i.e., it is never
+        read before initialization, never assigned via `*r = val` when `T` has
+        drop glue, and never passed to code that assumes initialization), the
+        code is **sound**.
     -   **Review classification**: Treat undocumented creation or passing of a
         reference or slice to uninitialized memory as **Incomplete Safety
         Documentation** (the same severity and category as a missing or
