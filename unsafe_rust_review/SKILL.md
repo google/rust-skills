@@ -1605,6 +1605,68 @@ unsafe { rely_on_sortedness_for_memory_safety(&v) }
 comparator is not trusted for memory-safety-relevant semantic correctness. If
 sortedness is memory-safety-critical, validate it or require an unsafe contract.
 
+### 11. Proof by reading another function's body
+
+Reject proofs that refer to the implementation (body) of another function
+(including a caller, a callee, or a callback being passed around).
+
+Exception: closures and `fn` items nested inside the function under review are
+local code, and the proof may rely on their bodies. Stating the fact on the
+nested item is still preferred.
+
+Require facts about other functions to be established in their documentation
+comments. Unsafe functions state their postconditions in the `# Safety` section.
+Safe functions use the `# Safety-usable invariant` section. Proofs cite these
+facts.
+
+Given:
+
+```rust
+/// # Safety
+///
+/// `callback` must be `None` or a function that, when called with a `ctx` that
+/// points to a live `Ctx` and that nothing else accesses for the duration of
+/// the call, returns null or an unlinked node allocated through `ctx`'s
+/// allocator. The parser takes ownership of the returned node.
+pub unsafe fn register_callback(
+    reg: &mut Registry,
+    callback: Option<unsafe extern "C" fn(*mut Ctx) -> *mut Node>,
+);
+```
+
+Reject:
+
+```rust
+/// # Safety
+///
+/// `ctx` must point to a live `Ctx` that nothing else accesses for the
+/// duration of the call.
+pub unsafe extern "C" fn my_callback(ctx: *mut Ctx) -> *mut Node { ... }
+
+// SAFETY: The implementation of `my_callback` meets `register_callback`'s
+// contract: it returns null or an unlinked node allocated through `ctx`'s
+// allocator.
+unsafe { register_callback(reg, Some(my_callback)) };
+```
+
+Accept:
+
+```rust
+/// # Safety
+///
+/// `ctx` must point to a live `Ctx` that nothing else accesses for the
+/// duration of the call.
+///
+/// If these preconditions hold, returns null or an unlinked node allocated
+/// through `ctx`'s allocator.
+pub unsafe extern "C" fn my_callback(ctx: *mut Ctx) -> *mut Node { ... }
+
+// SAFETY: `my_callback`'s `# Safety` preconditions are those
+// `register_callback`'s contract guarantees its caller provides, and its
+// postcondition is what that contract requires of the return value.
+unsafe { register_callback(reg, Some(my_callback)) };
+```
+
 ## Safe dependency and caller-provided code review rules
 
 ### Rule A: Intentionally selected safe dependencies may be trusted as documented
