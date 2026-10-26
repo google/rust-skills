@@ -465,6 +465,75 @@ Additionally, any safe code that mutates these fields must maintain the
 invariant, and any such mutation should be documented with a comment explaining
 how the invariant is maintained.
 
+### Invariants and contracts state only the property
+
+A `Safety invariant:` comment or a `# Safety` section states propositions.
+Keep the following out of it:
+
+-   **Origin.** Do not specify which constructor or operation first
+    established the property.
+-   **Maintainers.** Do not list the sites that currently uphold the invariant.
+    Each operation that might break the invariant (e.g., a write) must show
+    how it maintains the invariant.
+-   **Dependents.** Do not list the sites that rely on the invariant. Each
+    user of the invariant cites it in its `// SAFETY:` comment.
+-   **Rationale.** Do not justify a clause inside it. Rationale belongs in
+    implementation comments separate from the proposition.
+
+When reviewing, do not flag these sentences. They are not a defect; flag only a
+missing or false proposition.
+
+Bad (specifies the origin, lists maintainers and dependents):
+
+```rust
+struct Node {
+    // Safety invariant: `buf` is null or was allocated by `self.alloc()`, the
+    // allocator `Node::new_in()` installed. `push_text()` allocates through
+    // `self.alloc()`; `set_literal()` allocates through the parser's allocator,
+    // which is the same one; `set_info()` copies a buffer that came from any
+    // other allocator. `Drop` and `set_literal()` free the previous `buf`
+    // through `self.dealloc()`.
+    buf: *mut u8,
+}
+```
+
+Good:
+
+```rust
+struct Node {
+    // Safety invariant: `buf` is null or was allocated by `self.alloc()` with
+    // `Layout::array::<u8>(self.cap)`.
+    buf: *mut u8,
+}
+```
+
+Note that "allocated by `self.alloc()` with this layout" in this case is a part
+of the property, not a mere cross-reference to an origin.
+
+This rule also applies to a `# Safety` section. Bad (origin, rationale):
+
+```rust
+/// # Safety
+///
+/// `ptr` must be null or allocated by `new_in()` through `self.alloc()`,
+/// because `Drop` frees it through `self.dealloc()`. Pointers from
+/// `self.take_buf()` qualify.
+pub unsafe fn set_buf(&mut self, ptr: *mut u8, cap: usize)
+```
+
+Good:
+
+```rust
+/// # Safety
+///
+/// `ptr` must be null or allocated by `self.alloc` with
+/// `Layout::array::<u8>(cap)`. `self` takes ownership of the allocation.
+pub unsafe fn set_buf(&mut self, ptr: *mut u8, cap: usize)
+```
+
+Note that "`self` takes ownership of the allocation" is a postcondition the
+caller must know (criterion 10), not a statement about dependents.
+
 ### Safety-usable invariants on safe helpers
 
 Sometimes, safe helper functions exist to establish or verify invariants. While
