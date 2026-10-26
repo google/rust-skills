@@ -105,7 +105,10 @@ After O, state changes S1 ... Sk hold.
 
 The proof must be local enough that a maintainer can audit it without searching
 through the entire program, except for explicitly named project-local
-invariants, dependency contracts, and upstream `# Safety` preconditions.
+invariants, dependency contracts, upstream `# Safety` preconditions, and the
+guarantees documented by the crate-controlled or trusted-dependency functions it
+calls or installs (an unsafe fn's `# Safety` postconditions, or a safe fn's `#
+Safety-usable invariant`; never the docs of caller-provided code).
 
 ### Soundness target
 
@@ -349,7 +352,9 @@ Every proof-sensitive sentence must be classifiable as one of:
 -   `LOCAL FACT`: visible checked condition or control-flow fact.
 -   `TYPE FACT`: guaranteed by Rust's type system or by a documented type.
 -   `POSTCONDITION`: state established by a preceding operation whose contract
-    has already been proved.
+    has already been proved, or a guarantee a callee documents (in its `#
+    Safety` section or under `# Safety-usable invariant`) whose preconditions
+    this proof discharges.
 
 Reject any unclassified fact.
 
@@ -542,6 +547,8 @@ unsafe operation from:
 -   local code facts;
 -   documented dependency lemmas;
 -   documented project-local invariants;
+-   documented callee guarantees (`# Safety` postconditions, `# Safety-usable
+    invariant`s);
 -   Reference and std axioms.
 
 Do not write:
@@ -1005,7 +1012,8 @@ Every premise must be classified as one of:
 -   runtime check;
 -   control-flow fact;
 -   type-system fact;
--   postcondition from a previous proved operation.
+-   postcondition from a previous proved operation, or documented by a callee
+    under its `# Safety` or `# Safety-usable invariant`.
 
 Bad:
 
