@@ -45,7 +45,8 @@ sections by ID, never by number or title: numbers shift when a list grows, and
 titles get reworded. Areas: `model`, `evidence`, `fact`, `conv`
 (conventions), `doc` (`# Safety` criteria), `comment` (comment criteria), `auth`
 (authoring guidance), `topics`, `axiom`, `rej` (reject patterns), `dep`
-(dependency rules), `ref` (reference creation).
+(dependency rules), `ref` (reference creation), `hazard` (high-risk hazard
+checklists).
 
 ## Activation criteria
 
@@ -85,7 +86,7 @@ review advice conflicts, choose the more demanding rule unless it conflicts with
 the Rust Reference or standard library documentation.
 
 In review, findings come from `[fact.classify]`, `doc.*`, `comment.*`, `rej.*`,
-`dep.*`, and `ref.*`. The remaining sections define the model and the
+`dep.*`, `ref.*`, and `hazard.*`. The remaining sections define the model and the
 conventions proofs cite, and `auth.*` says how to write well; a departure from
 `auth.*` is not a finding.
 
@@ -527,6 +528,41 @@ SAFETY:` comment:
 // - Relies on the safety-usable invariant of `find_index` to ensure that
 //   the index is in bounds.
 ```
+
+
+### Anti-Gullibility Verification (Claim-vs-Code Decomposition) `[conv.anti-gullibility]`
+
+Treat every `// SAFETY:` comment or `# Safety` doc section as an unverified
+hypothesis that must be proven by executable code or caller contracts. Before
+accepting any existing or newly added `// SAFETY:` or `# Safety` comment,
+decompose it into:
+
+1.  **Required Preconditions**: The exact obligations required by the callee's
+    `# Safety` contract or Rust Reference rules (for raw pointer dereference,
+    `Send`/`Sync`, pointer provenance, lifetime transmutation, uninitialized
+    memory, or allocator layout).
+2.  **Author's Stated Justification**: What the comment claims holds at this
+    program point.
+3.  **Syntactic/Local Proof Check**: What the surrounding types, trait bounds,
+    dominating runtime checks (`assert!`, `if len < ...`, `.get()`,
+    `.checked_mul()`), synchronization primitives, and lifetimes actually
+    guarantee in code.
+
+Follow a two-pass verification order: first derive the required preconditions
+and check whether the surrounding code enforces them (ignoring the comment
+prose); only then check whether the `// SAFETY:` comment accurately states that
+proof. An explanatory comment without an enforcement mechanism in types, bounds,
+caller `# Safety` contracts, or control flow is an **unproven safety claim**,
+not a valid discharge of the obligation. In particular, if an `unsafe` block
+sits inside a **safe `fn`** and its `// SAFETY:` comment asserts a property of a
+caller-supplied argument that is not checked in code, the function is unsound.
+
+### Closed Proof Kernel Grouping (Deduplication) `[conv.dedup]`
+
+When multiple `unsafe` operations within the same function or module fail due to
+the exact same missing precondition or broken invariant (a single shared proof
+kernel), group them into a single finding anchored at the root site rather than
+emitting duplicate findings for each downstream operation.
 
 ## Criteria for `# Safety` documentation `[doc]`
 
@@ -1361,6 +1397,14 @@ proof must address it explicitly.
 | Interior mutability | `UnsafeCell`, `Cell`, `RefCell`, atomics, locks, and   |
 :                     : global state are accounted for.                        :
 
+### Copy Function-Pointer Statics `[topics.func-ptr]`
+
+Calling a `Copy` method (such as `.expect(...)` or `.unwrap()`) on a `static
+mut` holding `Option<unsafe fn(...)>` (or reading the function pointer by value)
+copies the function pointer by value and does **not** create a long-lived shared
+reference (`static_mut_refs` UB) across the subsequent indirect call, provided
+no concurrent mutation races with the read.
+
 ## Core axiom lookup discipline `[axiom]`
 
 When a proof relies on a Rust fact, trace it to the relevant Reference or std
@@ -2024,3 +2068,74 @@ contents safely (e.g. via `Cell::set`), but creating `&mut T` while a shared
 `&T` exists is still undefined behavior, even if no code reads or writes the
 `UnsafeCell`. Similarly, mutating a shared reference value directly without
 going through `UnsafeCell` is UB.
+
+## High-Risk Hazard Checklists `[hazard]`
+
+Reviewers must explicitly audit the following high-risk Rust soundness hazards:
+
+1.  **`unsafe impl Send` / `unsafe impl Sync` vs. Thread-Affinity & Unsynchronized Shared Mutation `[hazard.send-sync]`**:
+    `Send` allows moving a value to *another* OS thread; `Sync` (`&T: Send`)
+    allows concurrent access from *multiple* OS threads. A comment claiming
+    "only used on one thread" or "wrapped in thread-local storage by callers"
+    does **not** make a publicly or module-accessible wrapper type safely `Send`
+    or `Sync` unless the type's API prevents cross-thread transfer or
+    unsynchronized interior mutation (`*mut T`, `UnsafeCell`, raw FFI handles).
+2.  **Safe Public/Module Functions Wrapping `unsafe` Operations `[hazard.safe-fn-wrap]`**:
+    Any safe `fn` (without the `unsafe` keyword) that converts raw pointers,
+    offsets, or indices into references/slices (`slice::from_raw_parts`,
+    `&*ptr`, `ptr.add`, `offset_from`, `get_unchecked`) or passes
+    caller-controlled pointers/lengths to FFI without validating bounds,
+    alignment, non-nullness, and lifetime tying is **unsound** (it must either
+    validate all preconditions at runtime or be marked `unsafe fn` with a
+    `# Safety` section).
+3.  **Lifetime & Mutability Upgrade Scrutiny (`&self` -> `&mut T` / `'a` -> `'static`) `[hazard.lifetime-mut]`**:
+    Upgrading `&self` to `&mut T` (via raw pointer casts or `UnsafeCell` without
+    a runtime borrow flag, `Mutex`, or `&mut self` witness) or extending a
+    lifetime `'a` to `'static` (e.g. for async tasks, threads, or callbacks)
+    without guaranteeing the pointee outlives all possible uses is immediate
+    aliasing or use-after-free UB.
+4.  **Cross-Allocation Pointer Arithmetic & Provenance `[hazard.provenance]`**:
+    `ptr::offset_from`, `ptr::add`, and `slice::from_raw_parts` require both
+    pointers (or the start and end of the range) to be derived from the **same
+    allocation** (`allocated object`). Computing offsets between arbitrary slice
+    references or separate heap allocations is immediate UB in Rust even if only
+    used as a diagnostic offset. Paired ownership/allocation APIs (`into_raw*`
+    and `from_raw*`, `alloc` and `dealloc`) must also preserve allocation
+    identity, layout, and drop symmetry across empty (`is_empty()`) and ZST
+    (`size_of::<T>() == 0`) branches.
+5.  **Pre-Check Against Callee/Trait Encapsulation Before Flagging `[hazard.encapsulation]`**:
+    Before flagging a caller of an `unsafe` helper or macro, inspect the
+    definition of the helper or trait in the same module/crate to check whether
+    preconditions (such as alignment, `size_of::<T>()` bounds, or `repr(C)`) are
+    already enforced by `const` assertions, trait bounds (e.g., `FromBytes`,
+    `IntoBytes`, `Immutable`), or constructor invariants.
+
+### Four-Item Edge-Domain Checklist `[hazard.edge-domain]`
+
+Explicitly substitute these four boundary cases into every `unsafe` expression
+before concluding it is sound:
+
+1.  **Zero-Sized Types & Zero Lengths (`size_of::<T>() == 0`, `len == 0`)**:
+    Does `Box::into_raw` or `Vec::as_ptr` yield `NonNull::dangling()` when
+    `size_of::<T>() == 0` or `cap == 0` (violating "allocated by `A`" invariants
+    when `len > 0` on `[(); N]` or dropping the allocator early)? Does `len == 0`
+    get passed to foreign functions that compute `len - 1` or dereference
+    `ptr[0]`?
+2.  **Allocator Alignment & Signed/Unsigned Casts (`0 < size < align`, `c_int < 0`, `usize -> u32`)**:
+    When implementing `Allocator` or `GlobalAlloc` over C
+    `malloc`/`calloc`/`realloc`, can `0 < layout.size() < layout.align()` return
+    an under-aligned pointer? Can a signed integer (`c_int`, `isize`, `i32`) be
+    negative before `as usize`, or can `usize` truncate when cast to `u32`/`i32`?
+    Are all signed/unsigned type tags handled without panicking across
+    non-unwind FFI boundaries?
+3.  **Pointer Stride & Final-Iteration Stepping (`i == n - 1`)**:
+    Does `.add(stride)` or `.offset(stride)` on the **final loop iteration**
+    step more than one byte past the end of the allocation (which is immediate
+    UB even if not dereferenced)?
+4.  **`core::mem::forget` & Drop-Based Lifetime Guards**:
+    Does a safe API pass a non-`'static` borrow or pointer (`'a`) to a
+    background thread, FFI callback, or hardware/DMA table and rely on `Drop` to
+    stop access before `'a` ends (or implement `Deref` on a static wrapper
+    without requiring `'static`)? Because `core::mem::forget` is safe, relying
+    on `Drop` for soundness of borrowed lifetimes is unsound.
+
