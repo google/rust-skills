@@ -255,6 +255,35 @@ State the exact operation and its preconditions, cite checked artifact facts
 and proved lemmas or invariants, show the derivation, and prove resulting
 postconditions and invariant state on every applicable exit.
 
+Minimize the lexical extent of every `unsafe` block. Keep ordinary safe setup,
+validation, conversions, and result handling outside the block unless that code
+must execute inside the unsafe region for a specific semantic reason. Prefer a
+small block containing only the operation(s) whose safety contract is being
+discharged. This makes the proof boundary match the actual unchecked behavior
+and prevents unrelated safe code from being mistaken for part of the unsafe
+justification.
+
+Prefer:
+
+```rust
+let policy = fscrypt_policy_v2 {
+    version: 2,
+    contents_encryption_mode: FSCRYPT_MODE_AES_256_XTS as u8,
+    filenames_encryption_mode: FSCRYPT_MODE_AES_256_CTS as u8,
+    flags,
+    master_key_identifier: identifier,
+    ..Default::default()
+};
+let request = FS_IOC_SET_ENCRYPTION_POLICY.try_into().unwrap();
+// SAFETY: `dir` is an open file descriptor, `policy` is fully initialized,
+// and this ioctl accepts a pointer to `fscrypt_policy_v2` for `request`.
+let ret = unsafe { libc::ioctl(dir.as_raw_fd(), request, &policy) };
+```
+
+rather than placing the safe construction and conversion inside the `unsafe`
+block with the `ioctl` call. When reviewing existing code, call out unnecessarily
+wide unsafe regions even if the contained unsafe operation itself is sound.
+
 When existing code can be validated only by reconstructing a material
 derivation absent from its safety comment, do not accept it silently. Include
 the reconstructed derivation—or the smallest missing portion—in the review,
